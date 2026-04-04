@@ -1,0 +1,454 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+
+interface Submission {
+  id: string
+  completed_at: string | null
+  overall_score_pct: number | null
+  math_score_pct: number | null
+  caso_score_pct: number | null
+  video_recorded: boolean | null
+  roleplay_completed: boolean | null
+  enabled_sections: string[] | null
+  candidates: { name: string; email: string; cedula: string } | { name: string; email: string; cedula: string }[] | null
+  proctoring_reports: { fraud_score: number; fraud_level: string } | { fraud_score: number; fraud_level: string }[] | null
+}
+
+const fraudStyle = (level: string) => {
+  if (level === 'Confiable')    return { color: 'var(--teal)', bg: 'rgba(6,214,160,.08)',  border: 'rgba(6,214,160,.2)',  dot: 'var(--teal)' }
+  if (level === 'Riesgo Medio') return { color: 'var(--gold)', bg: 'rgba(244,162,97,.08)', border: 'rgba(244,162,97,.2)', dot: 'var(--gold)' }
+  return { color: '#ff6b6b', bg: 'rgba(233,69,96,.08)', border: 'rgba(233,69,96,.2)', dot: '#ff6b6b' }
+}
+
+const fraudShort = (level: string) => {
+  if (level === 'Confiable')    return 'Confiable'
+  if (level === 'Riesgo Medio') return 'Medio'
+  return 'Alto'
+}
+
+const scoreColor = (v: number) => v >= 70 ? 'var(--teal)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
+
+function ScoreBar({ value }: { value: number }) {
+  const color = scoreColor(value)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ width: 52, height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+        <div style={{ height: '100%', width: `${value}%`, background: color, borderRadius: 2 }} />
+      </div>
+      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, fontWeight: 700, color }}>{value}%</span>
+    </div>
+  )
+}
+
+function exportCSV(submissions: Submission[]) {
+  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'Video', 'Integridad', 'Fraud Score']
+  const rows = submissions.map(s => {
+    const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
+    const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
+    const date = s.completed_at ? new Date(s.completed_at).toLocaleDateString('es-CO') : ''
+    return [
+      cand?.name || '',
+      cand?.email || '',
+      cand?.cedula || '',
+      date,
+      s.overall_score_pct ?? '',
+      s.math_score_pct ?? '',
+      s.caso_score_pct ?? '',
+      s.video_recorded ? 'Sí' : 'No',
+      pr?.fraud_level || '',
+      pr?.fraud_score ?? '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  })
+  const csv = [headers.join(','), ...rows].join('\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  const a = document.createElement('a')
+  a.href = url; a.download = `candidatos_${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+type SortKey = 'date' | 'overall' | 'math' | 'caso'
+type SortDir = 'asc' | 'desc'
+type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
+
+export function CandidatesTable({ submissions }: { submissions: Submission[] }) {
+  const [query,       setQuery]       = useState('')
+  const [sortKey,     setSortKey]     = useState<SortKey>('date')
+  const [sortDir,     setSortDir]     = useState<SortDir>('desc')
+  const [fraudFilter, setFraudFilter] = useState<FraudFilter>('all')
+  const [minScore,    setMinScore]    = useState('')
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
+  const sortIcon = (key: SortKey) => sortKey === key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ' ↕'
+
+  const filtered = submissions
+    .filter(s => {
+      const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
+      const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
+      if (query) {
+        const q = query.toLowerCase()
+        if (!cand?.name?.toLowerCase().includes(q) && !cand?.email?.toLowerCase().includes(q)) return false
+      }
+      if (fraudFilter !== 'all' && pr?.fraud_level !== fraudFilter) return false
+      if (minScore && (s.overall_score_pct ?? 0) < Number(minScore)) return false
+      return true
+    })
+    .sort((a, b) => {
+      let va = 0, vb = 0
+      if (sortKey === 'date') {
+        va = new Date(a.completed_at || 0).getTime()
+        vb = new Date(b.completed_at || 0).getTime()
+      } else if (sortKey === 'overall') { va = a.overall_score_pct ?? 0; vb = b.overall_score_pct ?? 0 }
+      else if (sortKey === 'math')    { va = a.math_score_pct ?? 0;    vb = b.math_score_pct ?? 0 }
+      else if (sortKey === 'caso')    { va = a.caso_score_pct ?? 0;    vb = b.caso_score_pct ?? 0 }
+      return sortDir === 'desc' ? vb - va : va - vb
+    })
+
+  const th: React.CSSProperties = {
+    padding: '11px 16px',
+    textAlign: 'left',
+    fontFamily: 'Space Mono, monospace',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: '1.5px',
+    color: 'var(--muted)',
+    borderBottom: '1px solid var(--border)',
+    whiteSpace: 'nowrap',
+    background: 'rgba(255,255,255,.03)',
+    fontWeight: 400,
+  }
+
+  const td: React.CSSProperties = {
+    padding: '13px 16px',
+    borderBottom: '1px solid rgba(255,255,255,.04)',
+    verticalAlign: 'middle',
+  }
+
+  return (
+    <div>
+      {/* Search bar */}
+      <div style={{ marginBottom: 16, position: 'relative' }}>
+        <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', display: 'flex' }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar por nombre o email..."
+          style={{
+            width: '100%',
+            padding: '10px 14px 10px 38px',
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 9,
+            color: 'var(--text)',
+            fontSize: 13,
+            fontFamily: 'DM Sans, sans-serif',
+            outline: 'none',
+            boxSizing: 'border-box',
+            transition: 'border-color .2s',
+          }}
+          onFocus={e => (e.currentTarget.style.borderColor = 'rgba(67,97,238,.4)')}
+          onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: 2 }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+        {/* Fraud filter */}
+        <select
+          value={fraudFilter}
+          onChange={e => setFraudFilter(e.target.value as FraudFilter)}
+          style={{
+            padding: '8px 12px', borderRadius: 8, fontSize: 12,
+            background: 'var(--card)', border: '1px solid var(--border)',
+            color: fraudFilter !== 'all' ? 'var(--text)' : 'var(--muted)',
+            fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="all">Integridad: Todos</option>
+          <option value="Confiable">✅ Confiable</option>
+          <option value="Riesgo Medio">⚠ Riesgo Medio</option>
+          <option value="Riesgo Alto">🔴 Riesgo Alto</option>
+        </select>
+
+        {/* Min score filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontFamily: 'DM Sans' }}>Score min:</span>
+          <input
+            type="number" min={0} max={100}
+            value={minScore}
+            onChange={e => setMinScore(e.target.value)}
+            placeholder="—"
+            style={{
+              width: 56, padding: '7px 10px', borderRadius: 7, fontSize: 12,
+              background: 'var(--card)', border: '1px solid var(--border)',
+              color: 'var(--text)', fontFamily: 'Space Mono, monospace',
+              outline: 'none', textAlign: 'center',
+            }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans' }}>%</span>
+        </div>
+
+        {/* Clear filters */}
+        {(fraudFilter !== 'all' || minScore) && (
+          <button
+            onClick={() => { setFraudFilter('all'); setMinScore('') }}
+            style={{
+              padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
+              background: 'transparent', border: '1px solid var(--border)',
+              color: 'var(--muted)', fontFamily: 'DM Sans', cursor: 'pointer',
+            }}
+          >
+            × Limpiar filtros
+          </button>
+        )}
+
+        <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
+          {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Table */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, paddingLeft: 20 }}>Candidato</th>
+                <th
+                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('date')}
+                >
+                  Fecha{sortIcon('date')}
+                </th>
+                <th
+                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('overall')}
+                >
+                  Score General{sortIcon('overall')}
+                </th>
+                <th
+                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('math')}
+                >
+                  Math{sortIcon('math')}
+                </th>
+                <th
+                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('caso')}
+                >
+                  Caso{sortIcon('caso')}
+                </th>
+                <th style={th}>SharkTank</th>
+                <th style={th}>Role Play</th>
+                <th style={th}>Integridad</th>
+                <th style={{ ...th, textAlign: 'right', paddingRight: 20 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: '56px 20px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
+                    <div style={{ fontSize: 14, color: 'var(--dim)', fontFamily: 'DM Sans' }}>
+                      {query ? `Sin resultados para "${query}"` : 'No hay candidatos aún.'}
+                    </div>
+                  </td>
+                </tr>
+              ) : filtered.map(s => {
+                const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
+                const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
+                const date = s.completed_at
+                  ? new Date(s.completed_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : '—'
+                const fs = pr ? fraudStyle(pr.fraud_level) : null
+
+                return (
+                  <tr
+                    key={s.id}
+                    style={{ transition: 'background .12s', cursor: 'pointer' }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.025)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                  >
+                    {/* Candidate */}
+                    <td style={{ ...td, paddingLeft: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: '50%',
+                          background: 'rgba(67,97,238,.12)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 13, fontWeight: 700, color: 'var(--blue)',
+                          flexShrink: 0, fontFamily: 'DM Sans',
+                        }}>
+                          {cand?.name?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text)', fontFamily: 'DM Sans' }}>
+                            {cand?.name || 'Desconocido'}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, fontFamily: 'DM Sans' }}>
+                            {cand?.email}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Date */}
+                    <td style={{ ...td, fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      {date}
+                    </td>
+
+                    {/* Overall score */}
+                    <td style={td}>
+                      <ScoreBar value={s.overall_score_pct || 0} />
+                    </td>
+
+                    {/* Math */}
+                    <td style={td}>
+                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>
+                        {s.math_score_pct || 0}%
+                      </span>
+                    </td>
+
+                    {/* Caso */}
+                    <td style={td}>
+                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct || 0), fontWeight: 700 }}>
+                        {s.caso_score_pct || 0}%
+                      </span>
+                    </td>
+
+                    {/* SharkTank video */}
+                    <td style={td}>
+                      {!(s.enabled_sections ?? ['sharktank']).includes('sharktank') ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--border)' }}>—</span>
+                      ) : s.video_recorded ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--teal)', fontFamily: 'Space Mono', fontWeight: 700 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal)', flexShrink: 0 }} />
+                          Grabado
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono', fontWeight: 700 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--muted)', flexShrink: 0 }} />
+                          No
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Role Play */}
+                    <td style={td}>
+                      {!(s.enabled_sections ?? []).includes('roleplay') ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--border)' }}>—</span>
+                      ) : s.roleplay_completed ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#f59e0b', fontFamily: 'Space Mono', fontWeight: 700 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
+                          Hecho
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono', fontWeight: 700 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--muted)', flexShrink: 0 }} />
+                          No
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Fraud */}
+                    <td style={td}>
+                      {fs && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '4px 10px', borderRadius: 100,
+                          fontSize: 11, fontWeight: 700,
+                          fontFamily: 'Space Mono, monospace',
+                          color: fs.color,
+                          background: fs.bg,
+                          border: `1px solid ${fs.border}`,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: fs.dot, flexShrink: 0 }} />
+                          {fraudShort(pr!.fraud_level)}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Action */}
+                    <td style={{ ...td, paddingRight: 20, textAlign: 'right' }}>
+                      <Link
+                        href={`/admin/candidates/${s.id}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '6px 12px', borderRadius: 7,
+                          fontSize: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
+                          color: 'var(--blue)',
+                          background: 'rgba(67,97,238,.08)',
+                          border: '1px solid rgba(67,97,238,.15)',
+                          textDecoration: 'none',
+                          transition: 'all .15s',
+                          whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.15)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.08)' }}
+                      >
+                        Ver detalle
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                          <path d="M2 5.5h7M6 2.5L9 5.5 6 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        {filtered.length > 0 && (
+          <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
+              {filtered.length} de {submissions.length} candidatos
+            </span>
+            <button
+              onClick={() => exportCSV(submissions)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 7,
+                fontSize: 11.5, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
+                color: 'var(--teal)',
+                background: 'rgba(0,196,158,.08)',
+                border: '1px solid rgba(0,196,158,.2)',
+                cursor: 'pointer',
+                transition: 'all .15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,196,158,.15)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,196,158,.08)' }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1v7M3 5.5L6 8.5 9 5.5M1 10h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Exportar CSV
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
