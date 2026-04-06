@@ -1,11 +1,11 @@
 'use client'
 
 const CRITERIA = [
-  { icon: '💡', name: 'Propuesta de Valor',      desc: '¿Comunicas claramente qué propones y por qué beneficia al restaurante?',         weight: 25 },
-  { icon: '📊', name: 'Uso de Datos del Caso',   desc: '¿Sustentas tu pitch con los datos del caso (ventas, pedidos, ROI)?',              weight: 20 },
-  { icon: '🗂', name: 'Claridad y Estructura',   desc: '¿Tu pitch sigue una estructura: contexto → problema → solución → acción?',        weight: 20 },
-  { icon: '🎙', name: 'Confianza y Presencia',   desc: '¿Transmites seguridad, vocabulario técnico y ritmo fluido?',                      weight: 20 },
-  { icon: '🛡', name: 'Manejo de Objeciones',    desc: '¿Anticipas resistencias del dueño (costo, tiempo, riesgo) y las resuelves?',     weight: 15 },
+  { icon: '💡', name: 'Propuesta de Valor',      desc: '¿Comunicas claramente qué propones y por qué beneficia al restaurante?' },
+  { icon: '📊', name: 'Uso de Datos del Caso',   desc: '¿Sustentas tu pitch con los datos del caso (ventas, pedidos, ROI)?' },
+  { icon: '🗂', name: 'Claridad y Estructura',   desc: '¿Tu pitch sigue una estructura: contexto → problema → solución → acción?' },
+  { icon: '🎙', name: 'Confianza y Presencia',   desc: '¿Transmites seguridad, vocabulario técnico y ritmo fluido?' },
+  { icon: '🛡', name: 'Manejo de Objeciones',    desc: '¿Anticipas resistencias del dueño (costo, tiempo, riesgo) y las resuelves?' },
 ]
 
 export function SharkCriteria() {
@@ -51,18 +51,6 @@ export function SharkCriteria() {
               </span>
             </div>
 
-            {/* Weight pill */}
-            <span style={{
-              flexShrink: 0,
-              fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
-              padding: '2px 8px', borderRadius: 100,
-              background: 'rgba(224,53,84,.08)',
-              border: '1px solid rgba(224,53,84,.15)',
-              color: '#f07090', fontWeight: 600,
-              marginTop: 2,
-            }}>
-              {c.weight}%
-            </span>
           </div>
         ))}
       </div>
