@@ -32,6 +32,7 @@ export function MembersPanel({
   const [mode, setMode]               = useState<'single' | 'bulk' | null>(null)
   const [saving, setSaving]           = useState(false)
   const [flash, setFlash]             = useState<string | null>(null)
+  const [sending, setSending]         = useState<string | null>(null) // email being sent, or 'all'
   const router = useRouter()
 
   const showFlash = (msg: string) => {
@@ -92,6 +93,29 @@ export function MembersPanel({
     }
   }
 
+  const sendInvite = async (emails: string[]) => {
+    const key = emails.length === 1 ? emails[0] : 'all'
+    setSending(key)
+    try {
+      const res = await fetch('/api/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cohortId, emails }),
+      })
+      const data = await res.json() as { sent: number; failed: number }
+      if (!res.ok) throw new Error('Error del servidor')
+      showFlash(
+        data.failed === 0
+          ? `✓ ${data.sent} invitación${data.sent !== 1 ? 'es' : ''} enviada${data.sent !== 1 ? 's' : ''}`
+          : `${data.sent} enviadas, ${data.failed} fallaron`
+      )
+    } catch (e) {
+      showFlash(e instanceof Error ? e.message : 'Error al enviar')
+    } finally {
+      setSending(null)
+    }
+  }
+
   const removeMember = async (memberId: string) => {
     try {
       const supabase = createClient()
@@ -137,6 +161,24 @@ export function MembersPanel({
           </span>
         </div>
         <div style={{ display: 'flex', gap: 7 }}>
+          {list.length > 0 && (
+            <button
+              onClick={() => sendInvite(list.map(m => m.email))}
+              disabled={sending === 'all'}
+              title="Enviar invitación a todos"
+              style={{
+                padding: '5px 12px', fontSize: 11.5,
+                fontFamily: 'Inter, DM Sans, sans-serif',
+                background: 'rgba(0,214,138,.08)',
+                border: '1px solid rgba(0,214,138,.2)',
+                color: '#00d68a',
+                borderRadius: 7, cursor: sending === 'all' ? 'not-allowed' : 'pointer',
+                opacity: sending === 'all' ? 0.6 : 1,
+              }}
+            >
+              {sending === 'all' ? 'Enviando...' : '✉ Todos'}
+            </button>
+          )}
           <button
             onClick={() => setMode(mode === 'single' ? null : 'single')}
             style={{
@@ -251,7 +293,7 @@ export function MembersPanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {/* Header row */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr auto auto',
+            display: 'grid', gridTemplateColumns: '1fr auto auto auto',
             gap: 8, padding: '6px 4px',
             fontSize: 9.5, fontFamily: 'JetBrains Mono, Space Mono, monospace',
             textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)',
@@ -259,13 +301,14 @@ export function MembersPanel({
           }}>
             <span>Email</span>
             <span style={{ textAlign: 'center', minWidth: 90 }}>Caso</span>
+            <span style={{ minWidth: 36 }}></span>
             <span style={{ minWidth: 24 }}></span>
           </div>
           {list.map((m, i) => (
             <div
               key={m.id}
               style={{
-                display: 'grid', gridTemplateColumns: '1fr auto auto',
+                display: 'grid', gridTemplateColumns: '1fr auto auto auto',
                 gap: 8, padding: '9px 4px', alignItems: 'center',
                 borderBottom: i < list.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
               }}
@@ -327,6 +370,34 @@ export function MembersPanel({
                   </select>
                 )}
               </div>
+
+              {/* Send invite */}
+              <button
+                onClick={() => sendInvite([m.email])}
+                disabled={sending === m.email}
+                title="Enviar invitación"
+                style={{
+                  width: 28, height: 28, borderRadius: 6,
+                  background: 'transparent', border: '1px solid transparent',
+                  color: 'var(--muted)', cursor: sending === m.email ? 'not-allowed' : 'pointer',
+                  fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all .15s', opacity: sending === m.email ? 0.5 : 1,
+                }}
+                onMouseEnter={e => {
+                  if (sending !== m.email) {
+                    (e.currentTarget).style.color = '#8098f8'
+                    ;(e.currentTarget).style.borderColor = 'rgba(61,85,232,.3)'
+                    ;(e.currentTarget).style.background = 'rgba(61,85,232,.08)'
+                  }
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget).style.color = 'var(--muted)'
+                  ;(e.currentTarget).style.borderColor = 'transparent'
+                  ;(e.currentTarget).style.background = 'transparent'
+                }}
+              >
+                {sending === m.email ? '…' : '✉'}
+              </button>
 
               {/* Remove */}
               <button
