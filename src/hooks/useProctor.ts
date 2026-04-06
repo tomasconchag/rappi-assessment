@@ -14,6 +14,9 @@ type ProctoringState = {
   rclick: number
   kblock: number
   screenshot: number
+  windowBlur: number
+  windowBlurTime: number
+  windowBlurLeft: number | null
   hpFail: number
   warnings: number
   events: ProctoringEvent[]
@@ -39,7 +42,9 @@ export function useProctor(options: {
   const state = useRef<ProctoringState>({
     tabOut: 0, tabTime: 0, tabLeft: null,
     paste: 0, copy: 0, fsExit: 0, rclick: 0,
-    kblock: 0, screenshot: 0, hpFail: 0, warnings: 0,
+    kblock: 0, screenshot: 0,
+    windowBlur: 0, windowBlurTime: 0, windowBlurLeft: null,
+    hpFail: 0, warnings: 0,
     events: [], snapshots: [], currentScreen: ''
   })
 
@@ -142,6 +147,27 @@ export function useProctor(options: {
       }
     }
 
+    // Window blur: fires when the browser window loses focus (e.g. click on another monitor/app)
+    // Only counts when the tab is still visible — distinguishes from tab switches
+    const onWindowBlur = () => {
+      if (!activeRef.current) return
+      if (document.hidden) return // already tracked by visibilitychange
+      state.current.windowBlur++
+      state.current.windowBlurLeft = Date.now()
+      logEv('window_blur')
+      if (state.current.windowBlur === 1) warn('👀 Cambio de ventana detectado', 'Se detectó que cambiaste a otra ventana o monitor. Esto queda registrado.')
+      else if (state.current.windowBlur === 3) warn('🚨 Múltiples cambios de ventana', 'Has cambiado de ventana 3 veces. Esto afectará significativamente tu evaluación.')
+    }
+
+    const onWindowFocus = () => {
+      if (!activeRef.current) return
+      if (state.current.windowBlurLeft) {
+        state.current.windowBlurTime += (Date.now() - state.current.windowBlurLeft) / 1000
+        state.current.windowBlurLeft = null
+      }
+      logEv('window_focus')
+    }
+
     document.addEventListener('visibilitychange', onVisibility)
     document.addEventListener('paste', onPaste)
     document.addEventListener('copy', onCopy)
@@ -150,6 +176,8 @@ export function useProctor(options: {
     document.addEventListener('keydown', onKeydown)
     document.addEventListener('fullscreenchange', onFullscreen)
     document.addEventListener('webkitfullscreenchange', onFullscreen)
+    window.addEventListener('blur', onWindowBlur)
+    window.addEventListener('focus', onWindowFocus)
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
@@ -160,6 +188,8 @@ export function useProctor(options: {
       document.removeEventListener('keydown', onKeydown)
       document.removeEventListener('fullscreenchange', onFullscreen)
       document.removeEventListener('webkitfullscreenchange', onFullscreen)
+      window.removeEventListener('blur', onWindowBlur)
+      window.removeEventListener('focus', onWindowFocus)
     }
   }, [logEv, warn, goFullscreen])
 
@@ -168,7 +198,8 @@ export function useProctor(options: {
     const score = fraudScore({
       tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy,
       fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick,
-      key_block_count: s.kblock, screenshot_attempts: s.screenshot
+      key_block_count: s.kblock, screenshot_attempts: s.screenshot,
+      window_blur_count: s.windowBlur,
     })
     return {
       tab_out_count: s.tabOut,
@@ -179,6 +210,8 @@ export function useProctor(options: {
       rclick_count: s.rclick,
       key_block_count: s.kblock,
       screenshot_attempts: s.screenshot,
+      window_blur_count: s.windowBlur,
+      window_blur_time_s: Math.round(s.windowBlurTime),
       honeypot_fails: s.hpFail,
       warning_count: s.warnings,
       fraud_score: score,
@@ -196,7 +229,7 @@ export function useProctor(options: {
   const isActive = useCallback(() => activeRef.current, [])
   const getFraudScore = useCallback(() => {
     const s = state.current
-    return fraudScore({ tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy, fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick, key_block_count: s.kblock, screenshot_attempts: s.screenshot })
+    return fraudScore({ tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy, fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick, key_block_count: s.kblock, screenshot_attempts: s.screenshot, window_blur_count: s.windowBlur })
   }, [])
 
   const ref: ProctoringRef = { getData, addHoneypotFail, addSnapshot, isActive, fraudScore: getFraudScore }

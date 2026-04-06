@@ -14,6 +14,8 @@ export type ProctoringData = {
   rclick_count: number
   key_block_count: number
   screenshot_attempts: number
+  window_blur_count: number
+  window_blur_time_s: number
   honeypot_fails: number
   warning_count: number
   fraud_score: number
