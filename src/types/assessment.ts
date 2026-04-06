@@ -76,6 +76,7 @@ export type AssessmentConfig = {
   questions: Question[]
   math_version?: string
   math_context?: string
+  math_mode?: 'questions' | 'spreadsheet'
   enabled_sections?: SectionId[]
   caso_bank_entry?: CasoBankEntry | null
   active_caso_id?: string | null

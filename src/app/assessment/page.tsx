@@ -207,6 +207,7 @@ export default async function AssessmentPage(props: {
     questions: ([...casoQuestions, ...(mathQuestionsData || [])]) as Question[],
     math_version: mathVersion,
     math_context: configData.math_context || undefined,
+    math_mode: (configData.math_mode as 'questions' | 'spreadsheet') ?? 'questions',
     enabled_sections: effectiveSections,
     caso_bank_entry: casoBankEntry,
     active_caso_id: configData.active_caso_id ?? null,

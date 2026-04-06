@@ -18,9 +18,12 @@ import { CasoIntroScreen } from './screens/CasoIntroScreen'
 import { CasoQuestionScreen } from './screens/CasoQuestionScreen'
 import { MathIntroScreen } from './screens/MathIntroScreen'
 import { MathQuestionScreen } from './screens/MathQuestionScreen'
+import { MathSpreadsheetScreen } from './screens/MathSpreadsheetScreen'
 import { CompletionScreen } from './screens/CompletionScreen'
 import type { AssessmentConfig, CandidateInfo } from '@/types/assessment'
 import { scoreMath, scoreCaso, calcOverall, fraudScore, fraudLevel } from '@/lib/scoring'
+import { getSpreadsheetVersion, randomVersion, scoreMathSpreadsheet } from '@/lib/mathSpreadsheetTemplates'
+import type { SpreadsheetAnswer } from '@/lib/mathSpreadsheetTemplates'
 import type { SectionId } from '@/lib/challenges'
 
 interface ClerkUser {
@@ -78,6 +81,14 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const roleChunksRef       = useRef<Blob[]>([])
   const roleMimeRef         = useRef('video/webm')
   const roleCameraStreamRef = useRef<MediaStream | null>(null)
+
+  // Spreadsheet math mode
+  const spreadsheetVersion = useRef<'A' | 'B'>(
+    (liveConfig.math_version === 'A' || liveConfig.math_version === 'B')
+      ? liveConfig.math_version
+      : randomVersion()
+  )
+  const [spreadsheetAnswers, setSpreadsheetAnswers] = useState<SpreadsheetAnswer[]>([])
 
   const enabled = liveConfig?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
   const stepLabels = [
@@ -257,8 +268,19 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     if (snapVideoRef.current) { snapVideoRef.current.pause(); snapVideoRef.current.srcObject = null }
 
     const proctoringData = proctor.getData()
-    const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
-    const { correct, total, pct: mathPct, honeypotFails, details } = scoreMath(mathQs, state.mathAnswers)
+    const isSpreadsheetMode = liveConfig.math_mode === 'spreadsheet'
+    let correct: number, total: number, mathPct: number, honeypotFails: number, details: ReturnType<typeof scoreMath>['details']
+    if (isSpreadsheetMode) {
+      const tmpl = getSpreadsheetVersion(spreadsheetVersion.current)
+      const ssResult = scoreMathSpreadsheet(tmpl, spreadsheetAnswers)
+      correct = ssResult.correct; total = ssResult.total; mathPct = ssResult.pct
+      honeypotFails = 0
+      details = ssResult.details.map((d, i) => ({ idx: i, correct: d.correct, pointsAwarded: d.correct ? 1 : 0 }))
+    } else {
+      const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
+      const r = scoreMath(mathQs, state.mathAnswers)
+      correct = r.correct; total = r.total; mathPct = r.pct; honeypotFails = r.honeypotFails; details = r.details
+    }
     const { answered, pct: casoPct } = scoreCaso(state.casoAnswers, casoQuestions.length || 4)
     const overall = calcOverall(state.videoRecorded, casoPct, mathPct, liveConfig.enabled_sections)
 
@@ -349,6 +371,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         casoAnsweredCount: answered, casoScorePct: casoPct, overallScorePct: overall,
         casoAnswers: state.casoAnswers, casoTimings: state.casoTimings,
         mathAnswers: state.mathAnswers, mathTimings: state.mathTimings, mathDetails: details,
+        mathMode: liveConfig.math_mode ?? 'questions',
+        mathSpreadsheetVersion: isSpreadsheetMode ? spreadsheetVersion.current : null,
         proctoring: (({ snapshots: _s, ...rest }) => ({ ...rest, fraud_score: fs, fraud_level: fl }))(proctoringData),
         snapshotPaths,
       })
@@ -718,8 +742,18 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           onNext={handleCasoNext}
         />
       )}
-      {state.screen === 'math_intro' && <MathIntroScreen mathContext={liveConfig.math_context} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'math_question' })} />}
-      {state.screen === 'math_question' && mathQuestions[state.mathIdx] && (
+      {state.screen === 'math_intro' && (
+        liveConfig.math_mode === 'spreadsheet'
+          ? <MathIntroScreen mathContext={liveConfig.math_context} isSpreadsheet onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'math_question' })} />
+          : <MathIntroScreen mathContext={liveConfig.math_context} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'math_question' })} />
+      )}
+      {state.screen === 'math_question' && liveConfig.math_mode === 'spreadsheet' && (
+        <MathSpreadsheetScreen
+          template={getSpreadsheetVersion(spreadsheetVersion.current)}
+          onDone={answers => { setSpreadsheetAnswers(answers); submitAll() }}
+        />
+      )}
+      {state.screen === 'math_question' && liveConfig.math_mode !== 'spreadsheet' && mathQuestions[state.mathIdx] && (
         <MathQuestionScreen
           key={state.mathIdx}
           question={mathQuestions[state.mathIdx]}

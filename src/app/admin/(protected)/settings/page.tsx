@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MathVersionToggle } from './MathVersionToggle'
+import { MathModeToggle } from './MathModeToggle'
 
 export default async function SettingsPage() {
   const supabase = createAdminClient()
@@ -7,7 +8,7 @@ export default async function SettingsPage() {
   const [{ data: configData }, { data: allMathQs }] = await Promise.all([
     supabase
       .from('assessment_configs')
-      .select('id, label, math_version')
+      .select('id, label, math_version, math_mode')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -67,16 +68,30 @@ export default async function SettingsPage() {
             </div>
           </div>
 
-          {/* Math version selector */}
+          {/* Math mode selector */}
           <div style={{ ...card, borderTop: '3px solid var(--teal)' }}>
             <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 6 }}>
-              Taller de Matemáticas
+              Taller de Matemáticas · Tipo de prueba
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.6, marginBottom: 20 }}>
+              Elige si los candidatos responden preguntas una a una o trabajan directamente en una hoja de cálculo embebida.
+            </p>
+            <MathModeToggle
+              configId={configData.id}
+              currentMode={(configData.math_mode as 'questions' | 'spreadsheet') || 'questions'}
+            />
+          </div>
+
+          {/* Math version selector (questions mode only) */}
+          {(configData.math_mode ?? 'questions') === 'questions' && (
+          <div style={{ ...card, borderTop: '3px solid var(--teal)' }}>
+            <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 6 }}>
+              Taller de Matemáticas · Versión (modo preguntas)
             </div>
             <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.6, marginBottom: 24 }}>
-              Elige qué versión verán los candidatos. Ambas tienen el mismo contexto (tabla de restaurante) pero números distintos para reducir copia.
-              En modo <strong style={{ color: 'var(--gold)' }}>Aleatoria</strong>, cada candidato recibe una versión diferente al azar — ideal para convocatorias masivas.
+              Elige qué versión verán los candidatos. Ambas tienen el mismo contexto pero números distintos.
+              En modo <strong style={{ color: 'var(--gold)' }}>Aleatoria</strong>, cada candidato recibe una versión diferente al azar.
             </p>
-
             <MathVersionToggle
               configId={configData.id}
               currentVersion={configData.math_version || 'A'}
@@ -84,6 +99,7 @@ export default async function SettingsPage() {
               questionsB={questionsB}
             />
           </div>
+          )}
 
         </div>
       )}
