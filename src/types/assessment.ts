@@ -36,6 +36,19 @@ export type CasoContext = {
   discounts: { all: string; pro: string; returnAll: string; salesAll: number; salesPro: number }
 }
 
+export type CasoBankEntry = {
+  id: string
+  title: string
+  difficulty: string
+  owner_name: string
+  owner_profile: string
+  context: string
+  data_raw: string
+  situation: string
+  question: string
+  sort_order?: number
+}
+
 export type Question = {
   id: string
   section: 'caso' | 'math'
@@ -64,12 +77,15 @@ export type AssessmentConfig = {
   math_version?: string
   math_context?: string
   enabled_sections?: SectionId[]
+  caso_bank_entry?: CasoBankEntry | null
+  active_caso_id?: string | null
 }
 
 export type CandidateInfo = {
   name: string
   email: string
   cedula: string
+  celular: string
 }
 
 export type MathAnswers = Record<number, string>

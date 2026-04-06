@@ -5,9 +5,14 @@ import { Tag } from '@/components/ui/Tag'
 
 interface Props {
   onStart: () => void
+  casoBankEntry?: { title: string; question: string } | null
 }
 
-export function CasoIntroScreen({ onStart }: Props) {
+export function CasoIntroScreen({ onStart, casoBankEntry }: Props) {
+  const questionCount = casoBankEntry ? 1 : 4
+  const questionLabel = casoBankEntry ? '1 pregunta' : '4 preguntas'
+  const questionSub = casoBankEntry ? 'análisis abierto' : 'caso práctico'
+
   return (
     <>
       <div className="anim">
@@ -30,16 +35,16 @@ export function CasoIntroScreen({ onStart }: Props) {
           Caso Práctico
         </h2>
         <p style={{ fontSize: 16, color: 'var(--dim)', marginBottom: 6, fontFamily: 'Inter, DM Sans, sans-serif', fontWeight: 600 }}>
-          Heladería La Fiore
+          {casoBankEntry?.title ?? 'Heladería La Fiore'}
         </p>
         <p style={{ fontSize: 14.5, color: 'var(--dim)', lineHeight: 1.8, fontFamily: 'Inter, DM Sans, sans-serif' }}>
-          Analizarás datos reales de un aliado Rappi. 4 preguntas con tiempo individual.{' '}
+          Analizarás datos reales de un aliado Rappi. {questionCount === 1 ? '1 pregunta de análisis abierto' : '4 preguntas con tiempo individual'}.{' '}
           <strong style={{ color: 'var(--text)' }}>No puedes volver a preguntas anteriores.</strong>
         </p>
 
         <div style={{ marginTop: 28, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {[
-            { icon: '❓', label: '4 preguntas', sub: 'caso práctico' },
+            { icon: '❓', label: questionLabel, sub: questionSub },
             { icon: '⏱', label: '~15 minutos', sub: 'tiempo total' },
             { icon: '📊', label: '40% del score', sub: 'peso en evaluación' },
           ].map(s => (

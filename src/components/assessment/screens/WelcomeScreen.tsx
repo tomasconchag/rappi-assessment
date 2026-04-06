@@ -11,7 +11,7 @@ interface ClerkUser {
 }
 
 interface Props {
-  onSubmit: (candidate: { name: string; email: string; cedula: string }) => void
+  onSubmit: (candidate: { name: string; email: string; cedula: string; celular: string }) => void
   clerkUser?: ClerkUser | null
 }
 
@@ -21,13 +21,15 @@ export function WelcomeScreen({ onSubmit, clerkUser }: Props) {
   const [name,    setName]    = useState('')
   const [email,   setEmail]   = useState('')
   const [cedula,  setCedula]  = useState('')
+  const [celular, setCelular] = useState('')
   const [errors,  setErrors]  = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   const validateField = (field: string, value: string): string => {
-    if (field === 'name')   return value.trim() ? '' : 'Nombre requerido'
-    if (field === 'email')  return EMAIL_RE.test(value.trim()) ? '' : 'Ingresa un email válido'
-    if (field === 'cedula') return /^\d{5,12}$/.test(value.trim()) ? '' : 'Solo números, 5-12 dígitos'
+    if (field === 'name')    return value.trim() ? '' : 'Nombre requerido'
+    if (field === 'email')   return EMAIL_RE.test(value.trim()) ? '' : 'Ingresa un email válido'
+    if (field === 'cedula')  return /^\d{5,12}$/.test(value.trim()) ? '' : 'Solo números, 5-12 dígitos'
+    if (field === 'celular') return /^\d{7,15}$/.test(value.trim()) ? '' : 'Solo números, 7-15 dígitos'
     return ''
   }
 
@@ -47,39 +49,44 @@ export function WelcomeScreen({ onSubmit, clerkUser }: Props) {
 
   const validate = () => {
     if (clerkUser) {
-      // Only validate cedula when logged in
-      const err = validateField('cedula', cedula)
-      if (err) {
-        setErrors({ cedula: err })
-        setTouched({ cedula: true })
+      // Only validate cedula + celular when logged in
+      const e: Record<string, string> = {}
+      const cedulaErr = validateField('cedula', cedula)
+      const celularErr = validateField('celular', celular)
+      if (cedulaErr) e.cedula = cedulaErr
+      if (celularErr) e.celular = celularErr
+      if (Object.keys(e).length > 0) {
+        setErrors(e)
+        setTouched({ cedula: true, celular: true })
         return false
       }
       return true
     }
-    const fields = { name, email, cedula }
+    const fields = { name, email, cedula, celular }
     const e: Record<string, string> = {}
     for (const [f, v] of Object.entries(fields)) {
       const err = validateField(f, v)
       if (err) e[f] = err
     }
     setErrors(e)
-    setTouched({ name: true, email: true, cedula: true })
+    setTouched({ name: true, email: true, cedula: true, celular: true })
     return Object.keys(e).length === 0
   }
 
   const handleSubmit = () => {
     if (!validate()) return
     if (clerkUser) {
-      onSubmit({ name: clerkUser.name, email: clerkUser.email, cedula: cedula.trim() })
+      onSubmit({ name: clerkUser.name, email: clerkUser.email, cedula: cedula.trim(), celular: celular.trim() })
     } else {
-      onSubmit({ name: name.trim(), email: email.trim().toLowerCase(), cedula: cedula.trim() })
+      onSubmit({ name: name.trim(), email: email.trim().toLowerCase(), cedula: cedula.trim(), celular: celular.trim() })
     }
   }
 
   const isValid = (field: string) => touched[field] && !errors[field] && (
-    field === 'name'   ? name.trim().length > 0   :
-    field === 'email'  ? EMAIL_RE.test(email.trim()) :
-    /^\d{5,12}$/.test(cedula.trim())
+    field === 'name'    ? name.trim().length > 0 :
+    field === 'email'   ? EMAIL_RE.test(email.trim()) :
+    field === 'cedula'  ? /^\d{5,12}$/.test(cedula.trim()) :
+    /^\d{7,15}$/.test(celular.trim())
   )
 
   const inputStyle = (field: string): React.CSSProperties => ({
@@ -191,35 +198,36 @@ export function WelcomeScreen({ onSubmit, clerkUser }: Props) {
             <div style={{ color: 'var(--teal)', fontSize: 16, flexShrink: 0 }}>✓</div>
           </div>
 
-          {/* Only cedula input */}
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text"
-              placeholder="Número de cédula"
-              value={cedula}
-              onChange={e => handleChange('cedula', e.target.value, setCedula)}
-              onBlur={e => handleBlur('cedula', e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              style={inputStyle('cedula')}
-            />
-            {isValid('cedula') && (
-              <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--teal)', fontSize: 14, pointerEvents: 'none' }}>
-                ✓
-              </div>
-            )}
-            {errors.cedula && touched.cedula && (
-              <p style={{ color: '#f07090', fontSize: 11.5, marginTop: 5, textAlign: 'left', fontFamily: 'Inter, DM Sans, sans-serif', display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span>⚠</span> {errors.cedula}
-              </p>
-            )}
-          </div>
+          {/* Cedula + Celular inputs */}
+          {(['cedula', 'celular'] as const).map(field => (
+            <div key={field} style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder={field === 'cedula' ? 'Número de cédula' : 'Número de celular'}
+                value={field === 'cedula' ? cedula : celular}
+                onChange={e => handleChange(field, e.target.value, field === 'cedula' ? setCedula : setCelular)}
+                onBlur={e => handleBlur(field, e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                style={inputStyle(field)}
+              />
+              {isValid(field) && (
+                <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--teal)', fontSize: 14, pointerEvents: 'none' }}>✓</div>
+              )}
+              {errors[field] && touched[field] && (
+                <p style={{ color: '#f07090', fontSize: 11.5, marginTop: 5, textAlign: 'left', fontFamily: 'Inter, DM Sans, sans-serif', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span>⚠</span> {errors[field]}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
           {[
-            { id: 'name',   type: 'text',  value: name,   setter: setName,   placeholder: 'Nombre completo' },
-            { id: 'email',  type: 'email', value: email,  setter: setEmail,  placeholder: 'Correo electrónico' },
-            { id: 'cedula', type: 'text',  value: cedula, setter: setCedula, placeholder: 'Número de cédula' },
+            { id: 'name',    type: 'text',  value: name,    setter: setName,    placeholder: 'Nombre completo' },
+            { id: 'email',   type: 'email', value: email,   setter: setEmail,   placeholder: 'Correo electrónico' },
+            { id: 'cedula',  type: 'text',  value: cedula,  setter: setCedula,  placeholder: 'Número de cédula' },
+            { id: 'celular', type: 'text',  value: celular, setter: setCelular, placeholder: 'Número de celular' },
           ].map(f => (
             <div key={f.id} style={{ position: 'relative' }}>
               <input

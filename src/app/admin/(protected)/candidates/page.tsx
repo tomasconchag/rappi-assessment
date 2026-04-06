@@ -8,7 +8,7 @@ export default async function CandidatesPage() {
     .from('submissions')
     .select(`
       id, completed_at, overall_score_pct, math_score_pct, caso_score_pct,
-      video_recorded, roleplay_completed, enabled_sections, status,
+      video_recorded, roleplay_completed, roleplay_score, enabled_sections, challenge_weights, status,
       candidates ( name, email, cedula ),
       proctoring_reports ( fraud_score, fraud_level )
     `)

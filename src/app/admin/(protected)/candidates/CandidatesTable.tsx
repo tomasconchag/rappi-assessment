@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { normalizedWeights } from '@/lib/challenges'
+import type { SectionId } from '@/lib/challenges'
 
 interface Submission {
   id: string
@@ -9,9 +11,11 @@ interface Submission {
   overall_score_pct: number | null
   math_score_pct: number | null
   caso_score_pct: number | null
+  roleplay_score: number | null
   video_recorded: boolean | null
   roleplay_completed: boolean | null
   enabled_sections: string[] | null
+  challenge_weights: Partial<Record<SectionId, number>> | null
   candidates: { name: string; email: string; cedula: string } | { name: string; email: string; cedula: string }[] | null
   proctoring_reports: { fraud_score: number; fraud_level: string } | { fraud_score: number; fraud_level: string }[] | null
 }
@@ -30,6 +34,23 @@ const fraudShort = (level: string) => {
 
 const scoreColor = (v: number) => v >= 70 ? 'var(--teal)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
 
+function computeOverall(s: Submission): number | null {
+  const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+  const weights = normalizedWeights(sec, s.challenge_weights ?? undefined)
+
+  // Collect sections that are enabled AND have a numeric score available
+  const scored: { id: SectionId; score: number }[] = []
+  if (sec.includes('math')     && s.math_score_pct  != null) scored.push({ id: 'math',     score: s.math_score_pct })
+  if (sec.includes('caso')     && s.caso_score_pct  != null) scored.push({ id: 'caso',     score: s.caso_score_pct })
+  if (sec.includes('roleplay') && s.roleplay_score  != null) scored.push({ id: 'roleplay', score: s.roleplay_score })
+
+  if (scored.length === 0) return null
+  const weightTotal = scored.reduce((sum, { id }) => sum + (weights[id] ?? 0), 0)
+  if (weightTotal === 0) return null
+  const weightedSum = scored.reduce((sum, { id, score }) => sum + score * (weights[id] ?? 0), 0)
+  return Math.round(weightedSum / weightTotal)
+}
+
 function ScoreBar({ value }: { value: number }) {
   const color = scoreColor(value)
   return (
@@ -43,7 +64,7 @@ function ScoreBar({ value }: { value: number }) {
 }
 
 function exportCSV(submissions: Submission[]) {
-  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'Video', 'Integridad', 'Fraud Score']
+  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'RolePlay', 'Video', 'Integridad', 'Fraud Score']
   const rows = submissions.map(s => {
     const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
     const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
@@ -53,9 +74,10 @@ function exportCSV(submissions: Submission[]) {
       cand?.email || '',
       cand?.cedula || '',
       date,
-      s.overall_score_pct ?? '',
+      computeOverall(s) ?? '',
       s.math_score_pct ?? '',
       s.caso_score_pct ?? '',
+      s.roleplay_score ?? '',
       s.video_recorded ? 'Sí' : 'No',
       pr?.fraud_level || '',
       pr?.fraud_score ?? '',
@@ -104,7 +126,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
       if (sortKey === 'date') {
         va = new Date(a.completed_at || 0).getTime()
         vb = new Date(b.completed_at || 0).getTime()
-      } else if (sortKey === 'overall') { va = a.overall_score_pct ?? 0; vb = b.overall_score_pct ?? 0 }
+      } else if (sortKey === 'overall') { va = computeOverall(a) ?? 0; vb = computeOverall(b) ?? 0 }
       else if (sortKey === 'math')    { va = a.math_score_pct ?? 0;    vb = b.math_score_pct ?? 0 }
       else if (sortKey === 'caso')    { va = a.caso_score_pct ?? 0;    vb = b.caso_score_pct ?? 0 }
       return sortDir === 'desc' ? vb - va : va - vb
@@ -318,22 +340,32 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                     </td>
 
                     {/* Overall score */}
-                    <td style={td}>
-                      <ScoreBar value={s.overall_score_pct || 0} />
-                    </td>
+                    {(() => {
+                      const overall = computeOverall(s)
+                      return (
+                        <td style={td}>
+                          {overall != null
+                            ? <ScoreBar value={overall} />
+                            : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
+                          }
+                        </td>
+                      )
+                    })()}
 
                     {/* Math */}
                     <td style={td}>
-                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>
-                        {s.math_score_pct || 0}%
-                      </span>
+                      {!(s.enabled_sections ?? ['math']).includes('math')
+                        ? <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
+                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>{s.math_score_pct || 0}%</span>
+                      }
                     </td>
 
                     {/* Caso */}
                     <td style={td}>
-                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct || 0), fontWeight: 700 }}>
-                        {s.caso_score_pct || 0}%
-                      </span>
+                      {!(s.enabled_sections ?? ['caso']).includes('caso')
+                        ? <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
+                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct || 0), fontWeight: 700 }}>{s.caso_score_pct || 0}%</span>
+                      }
                     </td>
 
                     {/* SharkTank video */}
@@ -357,10 +389,14 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                     <td style={td}>
                       {!(s.enabled_sections ?? []).includes('roleplay') ? (
                         <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--border)' }}>—</span>
+                      ) : s.roleplay_score != null ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.roleplay_score), fontWeight: 700 }}>
+                          {s.roleplay_score}%
+                        </span>
                       ) : s.roleplay_completed ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#f59e0b', fontFamily: 'Space Mono', fontWeight: 700 }}>
                           <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
-                          Hecho
+                          Pendiente IA
                         </span>
                       ) : (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono', fontWeight: 700 }}>

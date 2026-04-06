@@ -60,6 +60,7 @@ const navItems = [
     children: [
       { href: '/admin/rubric/caso', label: 'Caso Práctico', icon: '📊', color: 'var(--blue)', colorBg: 'rgba(67,97,238,.12)', colorBorder: 'rgba(67,97,238,.25)' },
       { href: '/admin/rubric/sharktank', label: 'SharkTank', icon: '🦈', color: 'var(--red)', colorBg: 'rgba(233,69,96,.1)', colorBorder: 'rgba(233,69,96,.25)' },
+      { href: '/admin/rubric/roleplay', label: 'RolePlay', icon: '📞', color: 'var(--teal)', colorBg: 'rgba(6,214,160,.1)', colorBorder: 'rgba(6,214,160,.25)' },
     ],
   },
   {

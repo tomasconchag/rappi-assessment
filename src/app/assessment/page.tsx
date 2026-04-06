@@ -79,15 +79,48 @@ export default async function AssessmentPage() {
       .order('position', { ascending: true }),
   ])
 
+  // Fetch active banco de caso if set
+  let casoBankEntry = null
+  if (configData.active_caso_id) {
+    const { data: bankCase } = await supabase
+      .from('caso_bank')
+      .select('*')
+      .eq('id', configData.active_caso_id)
+      .single()
+    casoBankEntry = bankCase ?? null
+  }
+
+  // When a bank case is active, use its question instead of DB caso questions
+  const casoQuestions: Question[] = casoBankEntry
+    ? [{
+        id: `bank-${casoBankEntry.id}`,
+        section: 'caso',
+        position: 0,
+        content: casoBankEntry.question,
+        sub_label: null,
+        placeholder: 'Desarrolla tu respuesta con datos, análisis y plan de acción concreto...',
+        time_seconds: 900,
+        difficulty: 'hard',
+        points: 100,
+        correct_answer: null,
+        is_honeypot: false,
+        is_flex_answer: false,
+        show_data: true,
+        question_type: 'free_text',
+      } as Question]
+    : (casoQuestionsData || []) as Question[]
+
   const config: AssessmentConfig = {
     id: configData.id,
     label: configData.label,
     shark_scenario: configData.shark_scenario,
     caso_context: configData.caso_context,
-    questions: ([...(casoQuestionsData || []), ...(mathQuestionsData || [])]) as Question[],
+    questions: ([...casoQuestions, ...(mathQuestionsData || [])]) as Question[],
     math_version: mathVersion,
     math_context: configData.math_context || undefined,
     enabled_sections: (configData.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math'],
+    caso_bank_entry: casoBankEntry,
+    active_caso_id: configData.active_caso_id ?? null,
   }
 
   const clerkUserData = clerkUser ? {

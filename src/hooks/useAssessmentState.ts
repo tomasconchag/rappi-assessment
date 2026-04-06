@@ -57,7 +57,7 @@ export function clearSession() {
 
 const initialState: AssessmentState = {
   screen: 'welcome',
-  candidate: { name: '', email: '', cedula: '' },
+  candidate: { name: '', email: '', cedula: '', celular: '' },
   config: null,
   submissionId: null,
   candidateId: null,

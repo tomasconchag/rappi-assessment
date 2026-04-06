@@ -84,47 +84,48 @@ export function CompletionScreen({ name, submitting, error, confirmationCode }: 
             El equipo de Rappi revisará tu evaluación y se pondrá en contacto contigo.
           </p>
 
-          {/* Confirmation code */}
-          {confirmationCode && (
+          {/* Confirmation code + message stacked */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+          }}>
+            {confirmationCode && (
+              <div style={{
+                padding: '16px 32px',
+                background: 'var(--card)',
+                border: '1px solid rgba(0,214,138,.2)',
+                borderRadius: 'var(--r)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,.055)',
+                minWidth: 240,
+              }}>
+                <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 8 }}>
+                  Código de confirmación
+                </div>
+                <div style={{ fontFamily: 'JetBrains Mono, Space Mono, monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)', letterSpacing: '1px' }}>
+                  {confirmationCode.slice(0, 8).toUpperCase()}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontFamily: 'Inter, DM Sans, sans-serif' }}>
+                  Guarda este código — es tu comprobante de envío.
+                </div>
+              </div>
+            )}
+
             <div style={{
-              display: 'inline-block',
-              marginBottom: 20,
-              padding: '16px 32px',
+              padding: '16px 36px',
               background: 'var(--card)',
-              border: '1px solid rgba(0,214,138,.2)',
+              border: '1px solid var(--border)',
               borderRadius: 'var(--r)',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,.055)',
             }}>
-              <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 8 }}>
-                Código de confirmación
-              </div>
-              <div style={{ fontFamily: 'JetBrains Mono, Space Mono, monospace', fontSize: 14, fontWeight: 700, color: 'var(--green)', letterSpacing: '1px' }}>
-                {confirmationCode.slice(0, 8).toUpperCase()}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontFamily: 'Inter, DM Sans, sans-serif' }}>
-                Guarda este código — es tu comprobante de envío.
-              </div>
+              <p style={{
+                fontSize: 14, color: 'var(--dim)',
+                fontFamily: 'Inter, DM Sans, sans-serif',
+                display: 'flex', alignItems: 'center', gap: 8,
+                margin: 0,
+              }}>
+                <span style={{ fontSize: 18 }}>🚀</span>
+                ¡Mucho éxito en el proceso!
+              </p>
             </div>
-          )}
-
-          {/* Stats */}
-          <div style={{
-            display: 'inline-flex', gap: 1,
-            padding: '24px 36px',
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,.055)',
-            flexWrap: 'wrap', justifyContent: 'center',
-          }}>
-            <p style={{
-              fontSize: 14, color: 'var(--dim)',
-              fontFamily: 'Inter, DM Sans, sans-serif',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <span style={{ fontSize: 18 }}>🚀</span>
-              ¡Mucho éxito en el proceso!
-            </p>
           </div>
         </>
       )}

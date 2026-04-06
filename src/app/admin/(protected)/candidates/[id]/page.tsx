@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { AIEvalSection } from './AIEvalSection'
+import { RolePlayEvalSection } from './RolePlayEvalSection'
 import { normalizedWeights } from '@/lib/challenges'
 import type { SectionId } from '@/lib/challenges'
 
@@ -89,11 +90,17 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
     })
   }
   if (enabledSections.includes('roleplay')) {
+    const rpScore = (sub as any).roleplay_score
+    const rpBand  = (sub as any).roleplay_band
     scoreCards.push({
       label: `📞 Role Play (${weights.roleplay}%)`,
-      val:   sub.roleplay_completed ? '✅ Completado' : '❌ No completado',
-      color: sub.roleplay_completed ? 'var(--green)' : '#ff6b6b',
+      val:   rpScore != null ? `${rpScore}/100` : sub.roleplay_completed ? '✅ Completado' : '❌ No completado',
+      color: rpScore != null ? scoreColor(rpScore) : sub.roleplay_completed ? 'var(--green)' : '#ff6b6b',
     })
+    if (rpBand) {
+      // add band as subtitle — append to label
+      scoreCards[scoreCards.length - 1].label += ` · ${rpBand}`
+    }
   }
   if (enabledSections.includes('caso')) {
     scoreCards.push({
@@ -224,6 +231,19 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
             </div>
           )}
         </div>
+      )}
+
+      {/* RolePlay AI Evaluation */}
+      {enabledSections.includes('roleplay') && (
+        <RolePlayEvalSection
+          submissionId={id}
+          initialScore={(sub as any).roleplay_score ?? null}
+          initialBand={(sub as any).roleplay_band ?? null}
+          initialEvaluation={(sub as any).roleplay_evaluation ?? null}
+          initialTranscript={(sub as any).roleplay_transcript ?? null}
+          roleplayVideoPath={sub.roleplay_video_path ?? null}
+          roleplayCompleted={!!sub.roleplay_completed}
+        />
       )}
 
       {/* AI Evaluation */}

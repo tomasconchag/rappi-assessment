@@ -69,9 +69,10 @@ export function AssessmentShell({ config, clerkUser }: Props) {
   const snapStreamRef   = useRef<MediaStream | null>(null)
   const startTimeRef    = useRef<number | null>(null)
   // Roleplay screen recording — started on prep screen, stopped when call ends
-  const roleRecorderRef = useRef<MediaRecorder | null>(null)
-  const roleChunksRef   = useRef<Blob[]>([])
-  const roleMimeRef     = useRef('video/webm')
+  const roleRecorderRef     = useRef<MediaRecorder | null>(null)
+  const roleChunksRef       = useRef<Blob[]>([])
+  const roleMimeRef         = useRef('video/webm')
+  const roleCameraStreamRef = useRef<MediaStream | null>(null)
 
   const enabled = config?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
   const stepLabels = [
@@ -195,7 +196,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
     const proctoringData = proctor.getData()
     const mathQs = config.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
     const { correct, total, pct: mathPct, honeypotFails, details } = scoreMath(mathQs, state.mathAnswers)
-    const { answered, pct: casoPct } = scoreCaso(state.casoAnswers)
+    const { answered, pct: casoPct } = scoreCaso(state.casoAnswers, casoQuestions.length || 4)
     const overall = calcOverall(state.videoRecorded, casoPct, mathPct, config.enabled_sections)
 
     proctoringData.honeypot_fails = honeypotFails
@@ -276,26 +277,40 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       )
       const snapshotPaths = snapshotResults.filter((p): p is string => p !== null)
 
-      const submitRes = await fetch('/api/submissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidate: state.candidate, configId: config.id,
-          clerkUserId: clerkUser?.id ?? null,
-          videoPath, videoMimeType: state.videoMimeType, videoRecorded: state.videoRecorded,
-          roleplayCompleted: state.roleplayCompleted, roleplayVideoPath,
-          mathScoreRaw: correct, mathScoreTotal: total, mathScorePct: mathPct,
-          casoAnsweredCount: answered, casoScorePct: casoPct, overallScorePct: overall,
-          casoAnswers: state.casoAnswers, casoTimings: state.casoTimings,
-          mathAnswers: state.mathAnswers, mathTimings: state.mathTimings, mathDetails: details,
-          proctoring: { ...proctoringData, fraud_score: fs, fraud_level: fl },
-          snapshotPaths,
-        }),
+      const submissionBody = JSON.stringify({
+        candidate: state.candidate, configId: config.id,
+        clerkUserId: clerkUser?.id ?? null,
+        videoPath, videoMimeType: state.videoMimeType, videoRecorded: state.videoRecorded,
+        roleplayCompleted: state.roleplayCompleted, roleplayVideoPath,
+        mathScoreRaw: correct, mathScoreTotal: total, mathScorePct: mathPct,
+        casoAnsweredCount: answered, casoScorePct: casoPct, overallScorePct: overall,
+        casoAnswers: state.casoAnswers, casoTimings: state.casoTimings,
+        mathAnswers: state.mathAnswers, mathTimings: state.mathTimings, mathDetails: details,
+        proctoring: (({ snapshots: _s, ...rest }) => ({ ...rest, fraud_score: fs, fraud_level: fl }))(proctoringData),
+        snapshotPaths,
       })
 
-      if (!submitRes.ok) {
-        const errBody = await submitRes.json().catch(() => ({}))
-        console.error('Submission API error:', submitRes.status, errBody)
+      // Retry up to 3 attempts on network error or 5xx (dedup guard on server makes retries safe)
+      let submitRes: Response | null = null
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt)) // 0s, 2s, 4s backoff
+        try {
+          submitRes = await fetch('/api/submissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: submissionBody,
+          })
+          if (submitRes.ok || submitRes.status < 500) break // success or 4xx (no retry on 4xx)
+          console.warn(`Submission attempt ${attempt + 1} failed with ${submitRes.status}, retrying…`)
+        } catch (fetchErr) {
+          console.warn(`Submission attempt ${attempt + 1} network error:`, fetchErr)
+          if (attempt === 2) throw fetchErr // exhausted retries
+        }
+      }
+
+      if (!submitRes || !submitRes.ok) {
+        const errBody = await submitRes?.json().catch(() => ({})) ?? {}
+        console.error('Submission API error:', submitRes?.status, errBody)
         throw new Error(errBody?.error || 'Error al guardar')
       }
 
@@ -350,10 +365,12 @@ export function AssessmentShell({ config, clerkUser }: Props) {
     recorder: MediaRecorder,
     chunks: Blob[],
     mimeType: string,
+    cameraStream: MediaStream | null,
   ) => {
-    roleRecorderRef.current = recorder
-    roleChunksRef.current   = chunks   // same array reference — new chunks keep accumulating
-    roleMimeRef.current     = mimeType
+    roleRecorderRef.current     = recorder
+    roleChunksRef.current       = chunks   // same array reference — new chunks keep accumulating
+    roleMimeRef.current         = mimeType
+    roleCameraStreamRef.current = cameraStream
     dispatch({ type: 'GO_SCREEN', screen: 'roleplay_call' })
   }, [dispatch])
 
@@ -370,21 +387,29 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       dispatch({ type: 'GO_SCREEN', screen: 'roleplay_done' })
     }
 
+    // Stop camera stream tracks regardless of recorder state
+    const stopCamera = () => {
+      roleCameraStreamRef.current?.getTracks().forEach(t => t.stop())
+      roleCameraStreamRef.current = null
+    }
+
     if (recorder && recorder.state !== 'inactive') {
       let finished = false
       recorder.onstop = () => {
         if (finished) return
         finished = true
+        stopCamera()
         collectAndFinish()
       }
       // Safety fallback: if onstop never fires within 3s, collect anyway
       setTimeout(() => {
-        if (!finished) { finished = true; collectAndFinish() }
+        if (!finished) { finished = true; stopCamera(); collectAndFinish() }
       }, 3000)
-      try { recorder.stop() } catch { if (!finished) { finished = true; collectAndFinish() } }
+      try { recorder.stop() } catch { if (!finished) { finished = true; stopCamera(); collectAndFinish() } }
     } else {
       // Recorder already stopped (e.g. user stopped screen share mid-call)
       // Still collect any chunks that were recorded before it stopped
+      stopCamera()
       collectAndFinish()
     }
   }, [dispatch])
@@ -610,9 +635,14 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       )}
       {state.screen === 'roleplay_intro' && <RolePlayIntroScreen onStart={handleRolePlayStart} />}
       {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} />}
-      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} />}
+      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} />}
       {state.screen === 'roleplay_done' && <RolePlayDoneScreen onNext={handleRolePlayNext} />}
-      {state.screen === 'caso_intro' && <CasoIntroScreen onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'caso_question' })} />}
+      {state.screen === 'caso_intro' && (
+        <CasoIntroScreen
+          onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'caso_question' })}
+          casoBankEntry={config.caso_bank_entry ?? null}
+        />
+      )}
       {state.screen === 'caso_question' && casoQuestions[state.casoIdx] && (
         <CasoQuestionScreen
           key={state.casoIdx}
@@ -620,6 +650,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
           idx={state.casoIdx}
           total={casoQuestions.length}
           casoContext={config.caso_context}
+          casoBankEntry={config.caso_bank_entry ?? null}
           initialValue={state.casoAnswers[casoQuestions[state.casoIdx].id] || ''}
           onNext={handleCasoNext}
         />

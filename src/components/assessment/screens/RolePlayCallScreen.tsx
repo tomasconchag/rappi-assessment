@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import Script from 'next/script'
+import type { AnamClient } from '@anam-ai/js-sdk'
 
 interface Props {
   onDone: () => void
+  cameraStream: MediaStream | null
 }
 
 const TOTAL_SECONDS = 5 * 60
@@ -30,25 +31,74 @@ function playBeep(frequency: number, duration: number, times = 1) {
   } catch { /* ignore */ }
 }
 
-export function RolePlayCallScreen({ onDone }: Props) {
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_SECONDS)
-  const [confirmEnd, setConfirmEnd]   = useState(false)
-  const warned60Ref = useRef(false)
-  const endedRef    = useRef(false)
-  const avatarContainerRef = useRef<HTMLDivElement>(null)
+type AvatarStatus = 'loading' | 'connected' | 'error'
 
-  // Mount the anam-ai web component imperatively to avoid JSX TypeScript issues
+export function RolePlayCallScreen({ onDone, cameraStream }: Props) {
+  const [secondsLeft,  setSecondsLeft]  = useState(TOTAL_SECONDS)
+  const [confirmEnd,   setConfirmEnd]   = useState(false)
+  const [avatarStatus, setAvatarStatus] = useState<AvatarStatus>('loading')
+  const [avatarError,  setAvatarError]  = useState<string | null>(null)
+  const warned60Ref    = useRef(false)
+  const endedRef       = useRef(false)
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null)
+  const anamClientRef  = useRef<AnamClient | null>(null)
+
+  // Attach camera stream to PiP video element
   useEffect(() => {
-    const container = avatarContainerRef.current
-    if (!container) return
-    const el = document.createElement('anam-agent')
-    el.setAttribute('agent-id', '8f4b48bf-73f7-488b-ab93-f2206b777f27')
-    el.style.width = '100%'
-    el.style.height = '100%'
-    el.style.display = 'block'
-    container.appendChild(el)
-    return () => { container.innerHTML = '' }
-  }, [])
+    if (cameraVideoRef.current && cameraStream) {
+      cameraVideoRef.current.srcObject = cameraStream
+    }
+  }, [cameraStream])
+
+  // Initialize anam.ai avatar via SDK (session token from server — no cookies needed)
+  useEffect(() => {
+    let cancelled = false
+
+    async function startAvatar() {
+      try {
+        // 1. Get a short-lived session token from our backend
+        const res = await fetch('/api/anam-session', { method: 'POST' })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({})) as { error?: string }
+          throw new Error(err.error || `Session error ${res.status}`)
+        }
+        const { sessionToken } = await res.json() as { sessionToken: string }
+        if (cancelled) return
+
+        // 2. Initialize the anam client
+        const { createClient, AnamEvent } = await import('@anam-ai/js-sdk')
+        const client = createClient(sessionToken)
+        anamClientRef.current = client
+
+        // 3. Listen for events
+        client.addListener(AnamEvent.VIDEO_PLAY_STARTED, () => {
+          if (!cancelled) setAvatarStatus('connected')
+        })
+        client.addListener(AnamEvent.CONNECTION_CLOSED, () => {
+          if (!cancelled && !endedRef.current) setAvatarStatus('error')
+        })
+
+        // 4. Stream to video + audio elements
+        await client.streamToVideoAndAudioElements(
+          'roleplay-avatar-video',
+          'roleplay-avatar-audio',
+        )
+      } catch (e) {
+        if (!cancelled) {
+          setAvatarStatus('error')
+          setAvatarError(e instanceof Error ? e.message : String(e))
+        }
+      }
+    }
+
+    startAvatar()
+
+    return () => {
+      cancelled = true
+      anamClientRef.current?.stopStreaming()
+      anamClientRef.current = null
+    }
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const finalize = useCallback(() => {
     if (endedRef.current) return
@@ -88,55 +138,116 @@ export function RolePlayCallScreen({ onDone }: Props) {
       display: 'flex', flexDirection: 'column',
       background: 'var(--bg, #06060d)', zIndex: 100, overflow: 'hidden',
     }}>
-      {/* Load anam.ai agent widget script */}
-      <Script src="https://unpkg.com/@anam-ai/agent-widget" strategy="afterInteractive" />
-      {/* Timer bar */}
-      <div style={{
-        flexShrink: 0, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', gap: 14,
-        padding: '14px 24px',
-        background: 'var(--card)', borderBottom: '1px solid var(--border)', zIndex: 10,
-      }}>
-        <span style={{
-          fontFamily: 'Space Mono, monospace', fontSize: 11,
-          textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--muted)',
-        }}>
-          Tiempo restante
-        </span>
-        <span style={{
-          fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700,
-          letterSpacing: '2px', color: isRed ? '#ff6b6b' : 'var(--text)',
-          transition: 'color .5s ease', lineHeight: 1,
-        }}>
-          ⏱ {mins}:{secs}
-        </span>
-        {isRed && (
-          <span style={{
-            fontFamily: 'Space Mono, monospace', fontSize: 10,
-            color: '#ff6b6b', letterSpacing: '1px',
-            animation: 'rec-pulse 1.5s ease-in-out infinite',
-          }}>
-            ¡ÚLTIMO MINUTO!
-          </span>
-        )}
-        {/* Right side: REC indicator + end button */}
+
+      {/* Camera PiP overlay — visible in screen recording so admin sees the candidate */}
+      {cameraStream && (
         <div style={{
-          position: 'absolute', right: 24,
-          display: 'flex', alignItems: 'center', gap: 12,
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          zIndex: 500,
+          width: 160,
+          height: 120,
+          borderRadius: 10,
+          overflow: 'hidden',
+          border: '2px solid rgba(255,255,255,.15)',
+          boxShadow: '0 4px 24px rgba(0,0,0,.5)',
+          background: '#000',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <video
+            ref={cameraVideoRef}
+            autoPlay
+            muted
+            playsInline
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: 'scaleX(-1)',
+              display: 'block',
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            bottom: 6,
+            left: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
             <div style={{
-              width: 7, height: 7, borderRadius: '50%',
+              width: 5, height: 5, borderRadius: '50%',
               background: '#ff6b6b',
               animation: 'rec-pulse 1.5s ease-in-out infinite',
             }} />
             <span style={{
-              fontFamily: 'Space Mono, monospace', fontSize: 9,
-              color: '#ff6b6b', letterSpacing: '1px', textTransform: 'uppercase',
+              fontFamily: 'Space Mono, monospace',
+              fontSize: 7.5,
+              color: 'rgba(255,255,255,.8)',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
             }}>
-              REC
+              En vivo
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Timer bar — 3-column grid so center stays centered and right controls don't collide with ProctoringBadge */}
+      <div style={{
+        flexShrink: 0,
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        alignItems: 'center',
+        padding: '12px 24px',
+        background: 'var(--card)',
+        borderBottom: '1px solid var(--border)',
+        zIndex: 10,
+      }}>
+
+        {/* Left: REC indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: '#ff6b6b',
+            animation: 'rec-pulse 1.5s ease-in-out infinite',
+          }} />
+          <span style={{
+            fontFamily: 'Space Mono, monospace', fontSize: 9,
+            color: '#ff6b6b', letterSpacing: '1px', textTransform: 'uppercase',
+          }}>
+            REC
+          </span>
+        </div>
+
+        {/* Center: timer */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{
+            fontFamily: 'Space Mono, monospace', fontSize: 11,
+            textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--muted)',
+          }}>
+            Tiempo restante
+          </span>
+          <span style={{
+            fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700,
+            letterSpacing: '2px', color: isRed ? '#ff6b6b' : 'var(--text)',
+            transition: 'color .5s ease', lineHeight: 1,
+          }}>
+            ⏱ {mins}:{secs}
+          </span>
+          {isRed && (
+            <span style={{
+              fontFamily: 'Space Mono, monospace', fontSize: 10,
+              color: '#ff6b6b', letterSpacing: '1px',
+              animation: 'rec-pulse 1.5s ease-in-out infinite',
+            }}>
+              ¡ÚLTIMO MINUTO!
+            </span>
+          )}
+        </div>
+
+        {/* Right: end button — mr-[~160px] so it never overlaps the fixed ProctoringBadge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginRight: 160 }}>
           {!confirmEnd ? (
             <button
               onClick={() => setConfirmEnd(true)}
@@ -195,17 +306,83 @@ export function RolePlayCallScreen({ onDone }: Props) {
       {/* Main two-column layout */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-        {/* Left — Avatar iframe (45%) */}
+        {/* Left — Avatar (45%) — streamed via @anam-ai/js-sdk */}
         <div style={{
           width: '45%', flexShrink: 0,
           display: 'flex', flexDirection: 'column',
           padding: '16px', borderRight: '1px solid var(--border)',
           gap: 8, minHeight: 0,
         }}>
-          <div
-            ref={avatarContainerRef}
-            style={{ flex: 1, minHeight: 0, width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }}
-          />
+          {/* Avatar video container */}
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0a0a12' }}>
+            {/* Hidden audio element for avatar voice */}
+            <audio id="roleplay-avatar-audio" autoPlay />
+
+            {/* Avatar video stream */}
+            <video
+              id="roleplay-avatar-video"
+              autoPlay
+              playsInline
+              style={{
+                width: '100%', height: '100%',
+                objectFit: 'cover', display: 'block',
+                opacity: avatarStatus === 'connected' ? 1 : 0,
+                transition: 'opacity .5s ease',
+              }}
+            />
+
+            {/* Loading overlay */}
+            {avatarStatus === 'loading' && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 12, background: '#0a0a12',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  border: '3px solid rgba(245,158,11,.15)',
+                  borderTopColor: '#f59e0b',
+                  animation: 'spin 1s linear infinite',
+                }} />
+                <span style={{
+                  fontFamily: 'Space Mono, monospace', fontSize: 10,
+                  color: 'var(--muted)', letterSpacing: '1px',
+                  textTransform: 'uppercase',
+                }}>
+                  Conectando avatar…
+                </span>
+              </div>
+            )}
+
+            {/* Error overlay */}
+            {avatarStatus === 'error' && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 10, background: '#0a0a12', padding: 24,
+              }}>
+                <span style={{ fontSize: 32 }}>⚠️</span>
+                <span style={{
+                  fontFamily: 'Space Mono, monospace', fontSize: 10,
+                  color: '#f07090', letterSpacing: '.5px',
+                  textTransform: 'uppercase', textAlign: 'center',
+                }}>
+                  Avatar no disponible
+                </span>
+                {avatarError && (
+                  <span style={{
+                    fontFamily: 'Space Mono, monospace', fontSize: 9,
+                    color: 'var(--muted)', textAlign: 'center',
+                  }}>
+                    {avatarError}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
           <div style={{
             flexShrink: 0, textAlign: 'center',
             fontFamily: 'Space Mono, monospace', fontSize: 9,

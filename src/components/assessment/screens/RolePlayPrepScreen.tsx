@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
-  onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string) => void
+  onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null) => void
 }
 
 const PREP_SECONDS = 5 * 60
@@ -34,14 +34,27 @@ export function RolePlayPrepScreen({ onReady }: Props) {
   const [secondsLeft, setSecondsLeft] = useState(PREP_SECONDS)
   const [recStatus,   setRecStatus]   = useState<'idle' | 'requesting' | 'recording' | 'error'>('idle')
   const [recError,    setRecError]    = useState('')
+  const [hasCamPip,   setHasCamPip]   = useState(false)
 
-  const recorderRef  = useRef<MediaRecorder | null>(null)
-  const chunksRef    = useRef<Blob[]>([])
-  const mimeRef      = useRef('video/webm')
-  const warned60Ref  = useRef(false)
-  const expiredRef   = useRef(false)
-  const onReadyRef   = useRef(onReady)
-  onReadyRef.current = onReady
+  const recorderRef    = useRef<MediaRecorder | null>(null)
+  const chunksRef      = useRef<Blob[]>([])
+  const mimeRef        = useRef('video/webm')
+  const warned60Ref    = useRef(false)
+  const expiredRef     = useRef(false)
+  const onReadyRef     = useRef(onReady)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
+  const cameraVideoRef  = useRef<HTMLVideoElement | null>(null)
+  onReadyRef.current   = onReady
+
+  // Stop camera stream on unmount ONLY if we haven't handed it off to the parent
+  useEffect(() => {
+    return () => {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(t => t.stop())
+        cameraStreamRef.current = null
+      }
+    }
+  }, [])
 
   // Countdown only starts after recording is active
   useEffect(() => {
@@ -57,7 +70,9 @@ export function RolePlayPrepScreen({ onReady }: Props) {
           clearInterval(interval)
           if (!expiredRef.current && recorderRef.current) {
             expiredRef.current = true
-            onReadyRef.current(recorderRef.current, chunksRef.current, mimeRef.current)
+            const cam = cameraStreamRef.current
+            cameraStreamRef.current = null // hand off ownership to parent
+            onReadyRef.current(recorderRef.current, chunksRef.current, mimeRef.current, cam)
           }
           return 0
         }
@@ -77,15 +92,43 @@ export function RolePlayPrepScreen({ onReady }: Props) {
         audio: false,
       })
 
-      // Mic audio (best-effort)
-      let audioStream: MediaStream | null = null
+      // Camera + mic — required for evaluation
+      // Try to get camera + audio together first; fall back to audio-only if camera unavailable
+      let cameraStream: MediaStream | null = null
+      let gotCamera = false
       try {
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      } catch { /* audio optional */ }
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 },
+        })
+        gotCamera = true
+      } catch {
+        // Camera unavailable (e.g. no webcam) — try mic only
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+            video: false,
+          })
+        } catch {
+          // Mic also denied — cannot proceed without audio
+          setRecStatus('error')
+          setRecError('Debes permitir el acceso al micrófono para continuar con el RolePlay. El audio es necesario para la evaluación.')
+          screenStream.getTracks().forEach(t => t.stop())
+          return
+        }
+      }
 
+      // Attach camera to PiP video element
+      cameraStreamRef.current = cameraStream
+      setHasCamPip(gotCamera)
+      if (cameraVideoRef.current && gotCamera) {
+        cameraVideoRef.current.srcObject = cameraStream
+      }
+
+      // Build combined stream: screen video + mic audio
       const tracks = [
         ...screenStream.getVideoTracks(),
-        ...(audioStream ? audioStream.getAudioTracks() : []),
+        ...cameraStream.getAudioTracks(),
       ]
       const combined = new MediaStream(tracks)
 
@@ -115,7 +158,6 @@ export function RolePlayPrepScreen({ onReady }: Props) {
       screenStream.getVideoTracks()[0].onended = () => {
         setRecStatus('error')
         setRecError('Dejaste de compartir la pantalla. Vuelve a iniciar para continuar.')
-        // Request any remaining buffered data before stopping
         try { recorder.requestData() } catch { /* ignore */ }
         setTimeout(() => { try { recorder.stop() } catch { /* ignore */ } }, 200)
       }
@@ -133,7 +175,9 @@ export function RolePlayPrepScreen({ onReady }: Props) {
   const handleReady = useCallback(() => {
     if (!recorderRef.current || expiredRef.current || recStatus !== 'recording') return
     expiredRef.current = true
-    onReady(recorderRef.current, chunksRef.current, mimeRef.current)
+    const cam = cameraStreamRef.current
+    cameraStreamRef.current = null // hand off ownership to parent
+    onReady(recorderRef.current, chunksRef.current, mimeRef.current, cam)
   }, [onReady, recStatus])
 
   const mins  = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
@@ -152,13 +196,69 @@ export function RolePlayPrepScreen({ onReady }: Props) {
       overflow: 'hidden',
     }}>
 
+      {/* ── Camera PiP overlay (captured by screen recording) ── */}
+      {recStatus === 'recording' && hasCamPip && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          zIndex: 500,
+          width: 160,
+          height: 120,
+          borderRadius: 10,
+          overflow: 'hidden',
+          border: '2px solid rgba(255,255,255,.15)',
+          boxShadow: '0 4px 24px rgba(0,0,0,.5)',
+          background: '#000',
+        }}>
+          <video
+            ref={cameraVideoRef}
+            autoPlay
+            muted
+            playsInline
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: 'scaleX(-1)', // mirror — feels natural for self-view
+              display: 'block',
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            bottom: 6,
+            left: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}>
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: '#ff6b6b',
+              animation: 'rec-pulse 1.5s ease-in-out infinite',
+            }} />
+            <span style={{
+              fontFamily: 'Space Mono, monospace',
+              fontSize: 7.5,
+              color: 'rgba(255,255,255,.8)',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+            }}>
+              En vivo
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ── Top bar ── */}
+      {/* paddingRight: 165px leaves room for the fixed ProctoringBadge (top:14, right:14) */}
       <div style={{
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '14px 28px',
+        paddingRight: 165,
         background: 'var(--card)',
         borderBottom: '1px solid var(--border)',
         gap: 20,
@@ -351,7 +451,8 @@ export function RolePlayPrepScreen({ onReady }: Props) {
               }}>
                 Tu sesión de preparación y la llamada quedan grabadas para que el equipo pueda evaluar tu desempeño.
                 Cuando hagas clic, el browser te pedirá qué compartir — selecciona{' '}
-                <strong style={{ color: 'var(--text)' }}>"Esta pestaña"</strong>.
+                <strong style={{ color: 'var(--text)' }}>&quot;Esta pestaña&quot;</strong>.
+                Luego se pedirá acceso a tu <strong style={{ color: 'var(--text)' }}>cámara y micrófono</strong>.
               </p>
             )}
 
@@ -369,7 +470,7 @@ export function RolePlayPrepScreen({ onReady }: Props) {
               {[
                 ['📋', '5 min para revisar los datos del cliente'],
                 ['📞', '5 min de llamada en vivo con avatar IA'],
-                ['🎬', 'Todo queda grabado para la evaluación'],
+                ['🎬', 'Pantalla, cámara y audio quedan grabados'],
               ].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif' }}>
                   <span style={{ fontSize: 16 }}>{icon}</span>

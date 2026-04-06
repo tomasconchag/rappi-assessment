@@ -53,9 +53,9 @@ export function scoreMath(questions: Question[], answers: MathAnswers): {
   return { correct, total, pct: total > 0 ? Math.round((correct / total) * 100) : 0, honeypotFails, details }
 }
 
-export function scoreCaso(answers: Record<string, string>): { answered: number; pct: number } {
+export function scoreCaso(answers: Record<string, string>, total = 4): { answered: number; pct: number } {
   const answered = Object.values(answers).filter(v => v && v.length > 15).length
-  return { answered, pct: Math.round((answered / 4) * 100) }
+  return { answered, pct: Math.round((answered / total) * 100) }
 }
 
 export function calcOverall(

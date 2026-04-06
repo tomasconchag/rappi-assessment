@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b = body as any
-    const candidate    = b.candidate    as { name: string; email: string; cedula: string }
+    const candidate    = b.candidate    as { name: string; email: string; cedula: string; celular: string } | undefined
     const configId     = b.configId     as string
     const clerkUserId  = b.clerkUserId  as string | null
     const videoPath    = b.videoPath    as string | null
@@ -34,19 +34,25 @@ export async function POST(req: NextRequest) {
     const casoAnsweredCount = b.casoAnsweredCount as number
     const casoScorePct  = b.casoScorePct  as number
     const overallScorePct = b.overallScorePct as number
-    const casoAnswers  = b.casoAnswers  as Record<string, string>
-    const casoTimings  = b.casoTimings  as Record<number, number>
-    const mathAnswers  = b.mathAnswers  as Record<number, string>
-    const mathTimings  = b.mathTimings  as Record<number, number>
-    const mathDetails  = b.mathDetails  as { idx: number; correct: boolean; pointsAwarded: number }[]
-    const proctoring   = b.proctoring   as Record<string, unknown>
-    const snapshotPaths = b.snapshotPaths as string[]
+    const casoAnswers  = (b.casoAnswers  as Record<string, string>)  ?? {}
+    const casoTimings  = (b.casoTimings  as Record<number, number>) ?? {}
+    const mathAnswers  = (b.mathAnswers  as Record<number, string>) ?? {}
+    const mathTimings  = (b.mathTimings  as Record<number, number>) ?? {}
+    const mathDetails  = (b.mathDetails  as { idx: number; correct: boolean; pointsAwarded: number }[]) ?? []
+    const proctoring   = (b.proctoring   as Record<string, unknown>) ?? {}
+    const snapshotPaths = (b.snapshotPaths as string[]) ?? []
 
-    console.log(`[submissions] parsed body for ${candidate?.email}, configId=${configId}`)
+    // ── Validate required fields ──────────────────────────────────────────────
+    if (!candidate || !candidate.email || !configId) {
+      console.error('[submissions] Missing required fields: candidate or configId', { hasCandidate: !!candidate, email: candidate?.email, configId })
+      return Response.json({ error: 'Datos de candidato o configuración inválidos' }, { status: 400 })
+    }
+
+    console.log(`[submissions] parsed ok — email=${candidate.email} configId=${configId}`)
     const supabase = createAdminClient()
 
     // ── Dedup guard ──────────────────────────────────────────────────────────
-    const email = candidate?.email?.toLowerCase() ?? ''
+    const email = candidate.email.toLowerCase()
     const dedupeKey = `${email}::${configId}`
     const existing  = recentSubmissions.get(dedupeKey)
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
@@ -54,26 +60,32 @@ export async function POST(req: NextRequest) {
       return Response.json({ success: true, submissionId: existing.id, deduplicated: true })
     }
     // Also check Supabase: find candidate by email → check for recent submission
-    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
-    const { data: existingCand } = await supabase
-      .from('candidates')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle()
-
-    if (existingCand?.id) {
-      const { data: existingSub } = await supabase
-        .from('submissions')
+    // Wrapped in try/catch so a transient DB error here doesn't abort the whole submission
+    try {
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      const { data: existingCand } = await supabase
+        .from('candidates')
         .select('id')
-        .eq('candidate_id', existingCand.id)
-        .eq('config_id', configId)
-        .gte('completed_at', tenMinAgo)
+        .eq('email', email)
         .maybeSingle()
 
-      if (existingSub) {
-        console.log('[submissions] dedup hit (db)', dedupeKey)
-        return Response.json({ success: true, submissionId: existingSub.id, deduplicated: true })
+      if (existingCand?.id) {
+        const { data: existingSub } = await supabase
+          .from('submissions')
+          .select('id')
+          .eq('candidate_id', existingCand.id)
+          .eq('config_id', configId)
+          .gte('completed_at', tenMinAgo)
+          .maybeSingle()
+
+        if (existingSub) {
+          console.log('[submissions] dedup hit (db)', dedupeKey)
+          return Response.json({ success: true, submissionId: existingSub.id, deduplicated: true })
+        }
       }
+    } catch (dedupErr) {
+      // Dedup check failed — log and proceed with insertion (better to allow a duplicate than to fail entirely)
+      console.warn('[submissions] dedup check failed (continuing):', String(dedupErr))
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -81,7 +93,7 @@ export async function POST(req: NextRequest) {
     const { data: cand, error: candErr } = await supabase
       .from('candidates')
       .upsert(
-        { name: candidate.name, email: candidate.email, cedula: candidate.cedula },
+        { name: candidate.name, email: candidate.email, cedula: candidate.cedula, celular: candidate.celular },
         { onConflict: 'email' }
       )
       .select('id')
@@ -93,13 +105,14 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[submissions] candidate upserted id=${cand.id}`)
 
-    // Fetch enabled_sections from config so we store them with the submission
+    // Fetch enabled_sections + challenge_weights from config so we store them with the submission
     const { data: configData } = await supabase
       .from('assessment_configs')
-      .select('enabled_sections')
+      .select('enabled_sections, challenge_weights')
       .eq('id', configId as string)
       .maybeSingle()
-    const enabledSections = (configData?.enabled_sections as string[]) ?? ['sharktank', 'caso', 'math']
+    const enabledSections   = (configData?.enabled_sections as string[]) ?? ['sharktank', 'caso', 'math']
+    const challengeWeights  = (configData?.challenge_weights as Record<string, number>) ?? null
 
     // Create submission
     const { data: sub, error: subErr } = await supabase
@@ -116,6 +129,7 @@ export async function POST(req: NextRequest) {
         roleplay_completed: roleplayCompleted as boolean ?? false,
         roleplay_video_path: roleplayVideoPath as string ?? null,
         enabled_sections: enabledSections,
+        challenge_weights: challengeWeights,
         math_score_raw: mathScoreRaw as number ?? 0,
         math_score_total: mathScoreTotal as number ?? 0,
         math_score_pct: mathScorePct as number ?? 0,
@@ -214,10 +228,17 @@ export async function POST(req: NextRequest) {
       } catch (err) { console.error('Auto caso eval error:', err) }
     })
     // RolePlay: only if completed and video uploaded
-    // TODO: trigger roleplay evaluation once rubric is defined
-    // if (roleplayCompleted && roleplayVideoPath) {
-    //   after(async () => { await fetch(`${evalBase}/api/evaluate-roleplay`, { method: 'POST', ... }) })
-    // }
+    if (roleplayCompleted && roleplayVideoPath) {
+      after(async () => {
+        try {
+          await fetch(`${evalBase}/api/evaluate-roleplay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ submissionId }),
+          })
+        } catch (err) { console.error('Auto roleplay eval error:', err) }
+      })
+    }
 
     // SharkTank: only if video was recorded (starts AssemblyAI transcription job)
     if (videoRecorded) {
@@ -240,43 +261,56 @@ export async function POST(req: NextRequest) {
       if (Date.now() - v.ts > DEDUP_WINDOW_MS * 10) recentSubmissions.delete(k)
     }
 
-    // ── Email notification to admin (fire-and-forget) ───────────────────────
-    const adminEmail  = process.env.ADMIN_NOTIFY_EMAIL
-    const resendKey   = process.env.RESEND_API_KEY
-    const appUrl      = process.env.NEXT_PUBLIC_APP_URL || 'https://rappi-assessment.vercel.app'
-    if (adminEmail && resendKey) {
-      const scoreEmoji = overallScorePct >= 70 ? '🟢' : overallScorePct >= 40 ? '🟡' : '🔴'
-      fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendKey}` },
-        body: JSON.stringify({
-          from: 'Assessment Center <noreply@rappi.com>',
-          to:   adminEmail,
-          subject: `${scoreEmoji} Nuevo candidato: ${candidate.name} — ${overallScorePct}%`,
-          html: `
-            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
-              <h2 style="margin-bottom:4px">Nuevo Assessment Completado</h2>
-              <p style="color:#666;margin-top:0">${new Date().toLocaleString('es-CO')}</p>
-              <table style="width:100%;border-collapse:collapse;margin:20px 0">
-                <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Candidato</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #eee">${candidate.name}</td></tr>
-                <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Email</td><td style="padding:8px 0;border-bottom:1px solid #eee">${candidate.email}</td></tr>
-                <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Score General</td><td style="padding:8px 0;font-weight:700;font-size:18px;border-bottom:1px solid #eee">${scoreEmoji} ${overallScorePct}%</td></tr>
-                <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Math</td><td style="padding:8px 0;border-bottom:1px solid #eee">${mathScorePct}%</td></tr>
-                <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Caso</td><td style="padding:8px 0;border-bottom:1px solid #eee">${casoScorePct}%</td></tr>
-                <tr><td style="padding:8px 0;color:#666">Video grabado</td><td style="padding:8px 0">${videoRecorded ? '✅ Sí' : '❌ No'}</td></tr>
-              </table>
-              <a href="${appUrl}/admin/candidates/${submissionId}" style="display:inline-block;padding:12px 24px;background:#e03554;color:white;border-radius:8px;text-decoration:none;font-weight:600">Ver candidato →</a>
-            </div>
-          `,
-        }),
-      }).catch(() => {}) // fire-and-forget
-    }
+    console.log(`[submissions] done in ${Date.now()-t0}ms → ${submissionId}`)
+    // ── Return success BEFORE any fire-and-forget work ──────────────────────
+    // This ensures the client gets 200 even if email notification fails.
+    const response = Response.json({ success: true, submissionId })
+
+    // ── Email notification to admin (fire-and-forget via after) ────────────
+    after(() => {
+      try {
+        const adminEmail  = process.env.ADMIN_NOTIFY_EMAIL
+        const resendKey   = process.env.RESEND_API_KEY
+        const appUrl      = process.env.NEXT_PUBLIC_APP_URL || 'https://rappi-assessment.vercel.app'
+        if (adminEmail && resendKey) {
+          const scoreEmoji = overallScorePct >= 70 ? '🟢' : overallScorePct >= 40 ? '🟡' : '🔴'
+          fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendKey}` },
+            body: JSON.stringify({
+              from: 'Assessment Center <noreply@rappi.com>',
+              to:   adminEmail,
+              subject: `${scoreEmoji} Nuevo candidato: ${candidate?.name ?? 'Desconocido'} — ${overallScorePct}%`,
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px">
+                  <h2 style="margin-bottom:4px">Nuevo Assessment Completado</h2>
+                  <p style="color:#666;margin-top:0">${new Date().toLocaleString('es-CO')}</p>
+                  <table style="width:100%;border-collapse:collapse;margin:20px 0">
+                    <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Candidato</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #eee">${candidate?.name ?? ''}</td></tr>
+                    <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Email</td><td style="padding:8px 0;border-bottom:1px solid #eee">${candidate?.email ?? ''}</td></tr>
+                    <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Score General</td><td style="padding:8px 0;font-weight:700;font-size:18px;border-bottom:1px solid #eee">${scoreEmoji} ${overallScorePct}%</td></tr>
+                    <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Math</td><td style="padding:8px 0;border-bottom:1px solid #eee">${mathScorePct}%</td></tr>
+                    <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #eee">Caso</td><td style="padding:8px 0;border-bottom:1px solid #eee">${casoScorePct}%</td></tr>
+                    <tr><td style="padding:8px 0;color:#666">Video grabado</td><td style="padding:8px 0">${videoRecorded ? '✅ Sí' : '❌ No'}</td></tr>
+                  </table>
+                  <a href="${appUrl}/admin/candidates/${submissionId}" style="display:inline-block;padding:12px 24px;background:#e03554;color:white;border-radius:8px;text-decoration:none;font-weight:600">Ver candidato →</a>
+                </div>
+              `,
+            }),
+          }).catch((err) => console.error('[submissions] email error:', err))
+        }
+      } catch (emailErr) {
+        console.error('[submissions] email build error:', emailErr)
+      }
+    })
     // ─────────────────────────────────────────────────────────────────────────
 
-    console.log(`[submissions] done in ${Date.now()-t0}ms → ${submissionId}`)
-    return Response.json({ success: true, submissionId })
+    return response
   } catch (e) {
-    console.error('[submissions] FATAL error:', String(e), e instanceof Error ? e.stack : '')
-    return Response.json({ error: 'Error interno del servidor' }, { status: 500 })
+    const errMsg  = e instanceof Error ? e.message : String(e)
+    const errType = e instanceof Error ? e.constructor.name : typeof e
+    const stack   = e instanceof Error ? (e.stack ?? '') : ''
+    console.error(`[submissions] FATAL ${errType}: ${errMsg}`, stack)
+    return Response.json({ error: errMsg || 'Error interno del servidor' }, { status: 500 })
   }
 }
