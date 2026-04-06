@@ -141,6 +141,7 @@ export default async function AssessmentPage(props: {
   // Resolve case: cohort overrides global active_caso_id
   let casoBankEntry: CasoBankEntry | null = null
   let cohortEnabledSections: string[] | null = null
+  let cohortDeadline: string | null = null
 
   if (cohortToken) {
     // Fetch cohort config
@@ -152,6 +153,7 @@ export default async function AssessmentPage(props: {
       .maybeSingle()
 
     if (cohortData) {
+      cohortDeadline = cohortData.ends_at ?? null
       if (clerkUser) {
         // Clerk user: do full server-side assignment now
         const email = clerkUser.emailAddresses[0]?.emailAddress ?? ''
@@ -224,6 +226,7 @@ export default async function AssessmentPage(props: {
           config={config}
           clerkUser={clerkUserData}
           cohortToken={cohortToken}
+          cohortDeadline={cohortDeadline}
         />
       </ErrorBoundary>
     </main>

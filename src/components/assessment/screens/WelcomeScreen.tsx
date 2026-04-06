@@ -13,11 +13,12 @@ interface ClerkUser {
 interface Props {
   onSubmit: (candidate: { name: string; email: string; cedula: string; celular: string }) => void
   clerkUser?: ClerkUser | null
+  cohortDeadline?: string | null
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
-export function WelcomeScreen({ onSubmit, clerkUser }: Props) {
+export function WelcomeScreen({ onSubmit, clerkUser, cohortDeadline }: Props) {
   const [name,    setName]    = useState('')
   const [email,   setEmail]   = useState('')
   const [cedula,  setCedula]  = useState('')
@@ -253,6 +254,41 @@ export function WelcomeScreen({ onSubmit, clerkUser }: Props) {
           ))}
         </div>
       )}
+
+      {/* Deadline notice */}
+      {cohortDeadline && (() => {
+        const deadline = new Date(cohortDeadline)
+        const now = new Date()
+        const hoursLeft = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60))
+        const isUrgent = hoursLeft <= 24
+        const formatted = deadline.toLocaleDateString('es-CO', {
+          weekday: 'long', day: 'numeric', month: 'long',
+          hour: '2-digit', minute: '2-digit',
+        })
+        return (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 9,
+            padding: '10px 18px', borderRadius: 10, marginBottom: 20,
+            background: isUrgent ? 'rgba(224,53,84,.08)' : 'rgba(232,146,48,.07)',
+            border: `1px solid ${isUrgent ? 'rgba(224,53,84,.25)' : 'rgba(232,146,48,.2)'}`,
+            maxWidth: 420,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>{isUrgent ? '⚠️' : '🕐'}</span>
+            <span style={{
+              fontSize: 12.5, fontFamily: 'Inter, DM Sans, sans-serif',
+              color: isUrgent ? '#f07090' : '#f0ac60',
+              lineHeight: 1.5, textAlign: 'left',
+            }}>
+              <strong>Fecha límite:</strong> {formatted}
+              {isUrgent && hoursLeft > 0 && (
+                <span style={{ display: 'block', fontSize: 11, opacity: .85, marginTop: 2 }}>
+                  Quedan menos de {hoursLeft}h para completarlo
+                </span>
+              )}
+            </span>
+          </div>
+        )
+      })()}
 
       {/* CTA Button */}
       <button

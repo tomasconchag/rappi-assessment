@@ -34,6 +34,7 @@ interface Props {
   config: AssessmentConfig
   clerkUser?: ClerkUser | null
   cohortToken?: string | null
+  cohortDeadline?: string | null
 }
 
 function buildScreenToStep(enabled: string[]): Record<string, number> {
@@ -59,7 +60,7 @@ function buildScreenToStep(enabled: string[]): Record<string, number> {
   return map
 }
 
-export function AssessmentShell({ config, clerkUser, cohortToken }: Props) {
+export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline }: Props) {
   // liveConfig allows cohort case assignment to update config after email submit
   const [liveConfig, setLiveConfig] = useState<AssessmentConfig>(config)
   const [state, dispatch] = useAssessmentState()
@@ -666,7 +667,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken }: Props) {
       )}
 
       {/* ── Screen router ── */}
-      {state.screen === 'welcome' && <WelcomeScreen onSubmit={handleCandidateSubmit} clerkUser={clerkUser} />}
+      {state.screen === 'welcome' && <WelcomeScreen onSubmit={handleCandidateSubmit} clerkUser={clerkUser} cohortDeadline={cohortDeadline} />}
       {state.screen === 'context' && <ContextScreen name={state.candidate.name} onStart={beginAssessment} enabledSections={liveConfig.enabled_sections} />}
       {state.screen === 'shark_intro' && <SharkIntroScreen scenario={liveConfig.shark_scenario} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_prep' })} />}
       {state.screen === 'shark_prep' && <SharkPrepScreen scenario={liveConfig.shark_scenario} onReady={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_record' })} />}
