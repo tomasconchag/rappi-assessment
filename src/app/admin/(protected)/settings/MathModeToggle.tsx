@@ -2,11 +2,16 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { SpreadsheetQuestionsPanel } from './SpreadsheetQuestionsPanel'
+import type { QuestionSummary } from '@/lib/mathSpreadsheetTemplates'
 
 interface Props {
   configId: string
   currentMode: 'questions' | 'spreadsheet'
   currentVersion: string  // 'A' | 'B' | 'random'
+  questionsA: QuestionSummary[]
+  questionsB: QuestionSummary[]
+  initialOverrides: Record<string, string>
 }
 
 const SHEET_VERSIONS = [
@@ -15,7 +20,7 @@ const SHEET_VERSIONS = [
   { value: 'B',      label: 'Versión B',  desc: '3 hamburguesas, 30% descuento, 25 días hábiles…',               badge: 'B' },
 ]
 
-export function MathModeToggle({ configId, currentMode, currentVersion }: Props) {
+export function MathModeToggle({ configId, currentMode, currentVersion, questionsA, questionsB, initialOverrides }: Props) {
   const [mode, setMode]       = useState<'questions' | 'spreadsheet'>(currentMode)
   const [version, setVersion] = useState(currentVersion || 'random')
   const [saving, setSaving]   = useState(false)
@@ -159,6 +164,16 @@ export function MathModeToggle({ configId, currentMode, currentVersion }: Props)
             })}
           </div>
         </div>
+      )}
+
+      {/* Questions preview + edit panel — only visible in spreadsheet mode */}
+      {mode === 'spreadsheet' && (
+        <SpreadsheetQuestionsPanel
+          configId={configId}
+          questionsA={questionsA}
+          questionsB={questionsB}
+          initialOverrides={initialOverrides}
+        />
       )}
 
       {saving && <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace' }}>Guardando…</p>}

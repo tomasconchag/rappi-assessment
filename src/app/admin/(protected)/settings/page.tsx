@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MathVersionToggle } from './MathVersionToggle'
 import { MathModeToggle } from './MathModeToggle'
+import { getQuestionList } from '@/lib/mathSpreadsheetTemplates'
 
 export default async function SettingsPage() {
   const supabase = createAdminClient()
@@ -8,7 +9,7 @@ export default async function SettingsPage() {
   const [{ data: configData }, { data: allMathQs }] = await Promise.all([
     supabase
       .from('assessment_configs')
-      .select('id, label, math_version, math_mode')
+      .select('id, label, math_version, math_mode, spreadsheet_q_overrides')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -23,6 +24,10 @@ export default async function SettingsPage() {
 
   const questionsA = (allMathQs || []).filter(q => q.version === 'A')
   const questionsB = (allMathQs || []).filter(q => q.version === 'B')
+
+  const spreadsheetQuestionsA = getQuestionList('A')
+  const spreadsheetQuestionsB = getQuestionList('B')
+  const spreadsheetOverrides = (configData?.spreadsheet_q_overrides ?? {}) as Record<string, string>
 
   const card: React.CSSProperties = {
     background: 'var(--card)',
@@ -80,6 +85,9 @@ export default async function SettingsPage() {
               configId={configData.id}
               currentMode={(configData.math_mode as 'questions' | 'spreadsheet') || 'questions'}
               currentVersion={configData.math_version || 'random'}
+              questionsA={spreadsheetQuestionsA}
+              questionsB={spreadsheetQuestionsB}
+              initialOverrides={spreadsheetOverrides}
             />
           </div>
 

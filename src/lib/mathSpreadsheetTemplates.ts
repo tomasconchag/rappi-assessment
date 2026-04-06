@@ -29,6 +29,17 @@ export type AnswerCell = {
   isText?: boolean
   questionNum: number
   label: string
+  format?: 'currency' | 'percent' | 'number' | 'decimal' | 'text'
+}
+
+export type QuestionSummary = {
+  num: number
+  text: string            // the question wording
+  expectedValue: number | string
+  expectedDisplay: string // formatted: "$72,000", "25%", "15", "3.5", "Iguales"
+  answerR: number
+  answerC: number
+  topic: string           // e.g. "Ingresos", "Descuento", "Ganancia"
 }
 
 export type SpreadsheetVersion = {
@@ -213,15 +224,15 @@ export const VERSION_A: SpreadsheetVersion = {
     ...q9Cells(),
   ],
   answerCells: [
-    { r: 9,  c: 4, expected: 72000,  questionNum: 1, label: 'Ingresos 4 hamburguesas' },
-    { r: 12, c: 4, expected: 12000,  questionNum: 2, label: 'Precio con 20% descuento' },
-    { r: 15, c: 4, expected: 41000,  questionNum: 3, label: 'Ingresos burger+perro+pizza' },
-    { r: 18, c: 4, expected: 29000,  questionNum: 4, label: 'Lasaña 30% desc + perro caliente' },
-    { r: 22, c: 7, expected: 0.25,   questionNum: 5, label: 'Descuento % pizzas', tolerance: 0.001 },
-    { r: 25, c: 4, expected: 56700,  questionNum: 6, label: 'Ganancia 3 perros + 2 burgers' },
-    { r: 27, c: 4, expected: 15,     questionNum: 7, label: 'Llamadas diarias' },
-    { r: 34, c: 8, expected: 3.5,    questionNum: 8, label: 'Promedio ponderado', tolerance: 0.05 },
-    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?', isText: true },
+    { r: 9,  c: 4, expected: 72000,     questionNum: 1, label: 'Ingresos 4 hamburguesas',         format: 'currency' },
+    { r: 12, c: 4, expected: 12000,     questionNum: 2, label: 'Precio con 20% descuento',        format: 'currency' },
+    { r: 15, c: 4, expected: 41000,     questionNum: 3, label: 'Ingresos burger+perro+pizza',     format: 'currency' },
+    { r: 18, c: 4, expected: 29000,     questionNum: 4, label: 'Lasaña 30% desc + perro caliente', format: 'currency' },
+    { r: 22, c: 7, expected: 0.25,      questionNum: 5, label: 'Descuento % pizzas',              format: 'percent',  tolerance: 0.001 },
+    { r: 25, c: 4, expected: 56700,     questionNum: 6, label: 'Ganancia 3 perros + 2 burgers',   format: 'currency' },
+    { r: 27, c: 4, expected: 15,        questionNum: 7, label: 'Llamadas diarias',                format: 'number' },
+    { r: 34, c: 8, expected: 3.5,       questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
+    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
   ],
 }
 
@@ -277,16 +288,64 @@ export const VERSION_B: SpreadsheetVersion = {
     ...q9Cells(),
   ],
   answerCells: [
-    { r: 9,  c: 4, expected: 54000,  questionNum: 1, label: 'Ingresos 3 hamburguesas' },
-    { r: 12, c: 4, expected: 10500,  questionNum: 2, label: 'Precio con 30% descuento' },
-    { r: 15, c: 4, expected: 41000,  questionNum: 3, label: 'Ingresos burger+perro+pizza' },
-    { r: 18, c: 4, expected: 31000,  questionNum: 4, label: 'Lasaña 20% desc + perro caliente' },
-    { r: 22, c: 7, expected: 0.30,   questionNum: 5, label: 'Descuento % pizzas', tolerance: 0.001 },
-    { r: 25, c: 4, expected: 81900,  questionNum: 6, label: 'Ganancia 3 perros + 4 burgers' },
-    { r: 27, c: 4, expected: 12,     questionNum: 7, label: 'Llamadas diarias' },
-    { r: 34, c: 8, expected: 3.655,  questionNum: 8, label: 'Promedio ponderado', tolerance: 0.05 },
-    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?', isText: true },
+    { r: 9,  c: 4, expected: 54000,     questionNum: 1, label: 'Ingresos 3 hamburguesas',         format: 'currency' },
+    { r: 12, c: 4, expected: 10500,     questionNum: 2, label: 'Precio con 30% descuento',        format: 'currency' },
+    { r: 15, c: 4, expected: 41000,     questionNum: 3, label: 'Ingresos burger+perro+pizza',     format: 'currency' },
+    { r: 18, c: 4, expected: 31000,     questionNum: 4, label: 'Lasaña 20% desc + perro caliente', format: 'currency' },
+    { r: 22, c: 7, expected: 0.30,      questionNum: 5, label: 'Descuento % pizzas',              format: 'percent',  tolerance: 0.001 },
+    { r: 25, c: 4, expected: 81900,     questionNum: 6, label: 'Ganancia 3 perros + 4 burgers',   format: 'currency' },
+    { r: 27, c: 4, expected: 12,        questionNum: 7, label: 'Llamadas diarias',                format: 'number' },
+    { r: 34, c: 8, expected: 3.655,     questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
+    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
   ],
+}
+
+export function getQuestionList(version: 'A' | 'B'): QuestionSummary[] {
+  const tmpl = version === 'A' ? VERSION_A : VERSION_B
+
+  const topics = [
+    'Ingresos',
+    'Descuento',
+    'Suma de ingresos',
+    'Descuento + suma',
+    '% Descuento',
+    'Ganancia',
+    'Regla de 3',
+    'Prom. ponderado',
+    'Rentabilidad',
+  ]
+
+  return tmpl.answerCells.map((ac, i) => {
+    // Find the question label cell — locked cell in col 4 near this row
+    const labelCell = tmpl.cells.find(c =>
+      c.c === 4 && c.locked && typeof c.v === 'string' &&
+      (c.v as string).startsWith(`${ac.questionNum}.`)
+    )
+
+    const text = labelCell ? String(labelCell.v) : `Pregunta ${ac.questionNum}`
+
+    // Format expected value
+    let expectedDisplay = String(ac.expected)
+    if (ac.format === 'currency') {
+      expectedDisplay = `$${Number(ac.expected).toLocaleString('es-CO')}`
+    } else if (ac.format === 'percent') {
+      expectedDisplay = `${Math.round(Number(ac.expected) * 100)}%`
+    } else if (ac.format === 'decimal') {
+      expectedDisplay = Number(ac.expected).toFixed(2)
+    } else if (ac.format === 'number') {
+      expectedDisplay = String(ac.expected)
+    }
+
+    return {
+      num: ac.questionNum,
+      text: text.replace(/^\d+\.\s*/, ''), // strip "1. " prefix
+      expectedValue: ac.expected,
+      expectedDisplay,
+      answerR: ac.r,
+      answerC: ac.c,
+      topic: topics[i] ?? `Q${ac.questionNum}`,
+    }
+  })
 }
 
 export function getSpreadsheetVersion(version: 'A' | 'B'): SpreadsheetVersion {
