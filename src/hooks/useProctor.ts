@@ -13,6 +13,7 @@ type ProctoringState = {
   fsExit: number
   rclick: number
   kblock: number
+  screenshot: number
   hpFail: number
   warnings: number
   events: ProctoringEvent[]
@@ -38,7 +39,7 @@ export function useProctor(options: {
   const state = useRef<ProctoringState>({
     tabOut: 0, tabTime: 0, tabLeft: null,
     paste: 0, copy: 0, fsExit: 0, rclick: 0,
-    kblock: 0, hpFail: 0, warnings: 0,
+    kblock: 0, screenshot: 0, hpFail: 0, warnings: 0,
     events: [], snapshots: [], currentScreen: ''
   })
 
@@ -105,6 +106,21 @@ export function useProctor(options: {
     const onKeydown = (e: KeyboardEvent) => {
       if (!activeRef.current) return
       const k = e.key.toLowerCase()
+
+      // Screenshot detection
+      // PrintScreen (Windows) — key is 'printscreen'
+      const isPrintScreen = k === 'printscreen'
+      // Mac: Cmd+Shift+3 / Cmd+Shift+4 / Cmd+Shift+5
+      const isMacScreenshot = e.metaKey && e.shiftKey && ['3', '4', '5'].includes(k)
+      // Windows Snipping shortcut: Win+Shift+S — not detectable (OS-level), but Ctrl+Shift+S in some apps
+      if (isPrintScreen || isMacScreenshot) {
+        state.current.screenshot++
+        logEv('screenshot', e.key)
+        if (state.current.screenshot === 1) warn('📸 Captura de pantalla detectada', 'Se detectó un intento de captura de pantalla. Esto queda registrado y afecta tu evaluación.')
+        else warn('🚨 Múltiples capturas de pantalla', `Se detectaron ${state.current.screenshot} capturas de pantalla. Esto afectará significativamente tu evaluación.`)
+        return
+      }
+
       if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'p', 's', 'u', 'i'].includes(k)) {
         const target = e.target as HTMLElement
         if (['c', 'v'].includes(k) && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
@@ -152,7 +168,7 @@ export function useProctor(options: {
     const score = fraudScore({
       tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy,
       fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick,
-      key_block_count: s.kblock
+      key_block_count: s.kblock, screenshot_attempts: s.screenshot
     })
     return {
       tab_out_count: s.tabOut,
@@ -162,6 +178,7 @@ export function useProctor(options: {
       fs_exit_count: s.fsExit,
       rclick_count: s.rclick,
       key_block_count: s.kblock,
+      screenshot_attempts: s.screenshot,
       honeypot_fails: s.hpFail,
       warning_count: s.warnings,
       fraud_score: score,
@@ -179,7 +196,7 @@ export function useProctor(options: {
   const isActive = useCallback(() => activeRef.current, [])
   const getFraudScore = useCallback(() => {
     const s = state.current
-    return fraudScore({ tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy, fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick, key_block_count: s.kblock })
+    return fraudScore({ tab_out_count: s.tabOut, paste_attempts: s.paste, copy_attempts: s.copy, fs_exit_count: s.fsExit, honeypot_fails: s.hpFail, rclick_count: s.rclick, key_block_count: s.kblock, screenshot_attempts: s.screenshot })
   }, [])
 
   const ref: ProctoringRef = { getData, addHoneypotFail, addSnapshot, isActive, fraudScore: getFraudScore }

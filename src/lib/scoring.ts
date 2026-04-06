@@ -73,7 +73,7 @@ export function calcOverall(
   )
 }
 
-export function fraudScore(data: Pick<ProctoringData, 'tab_out_count' | 'paste_attempts' | 'copy_attempts' | 'fs_exit_count' | 'honeypot_fails' | 'rclick_count' | 'key_block_count'>): number {
+export function fraudScore(data: Pick<ProctoringData, 'tab_out_count' | 'paste_attempts' | 'copy_attempts' | 'fs_exit_count' | 'honeypot_fails' | 'rclick_count' | 'key_block_count' | 'screenshot_attempts'>): number {
   let s = 0
   if (data.tab_out_count >= 3) s += 2; else if (data.tab_out_count >= 1) s += 1
   if (data.paste_attempts >= 1) s += 3
@@ -82,6 +82,7 @@ export function fraudScore(data: Pick<ProctoringData, 'tab_out_count' | 'paste_a
   if (data.honeypot_fails >= 1) s += 3
   if (data.rclick_count >= 3) s += 1
   if (data.key_block_count >= 5) s += 1
+  if (data.screenshot_attempts >= 2) s += 2; else if (data.screenshot_attempts >= 1) s += 1
   return s
 }
 

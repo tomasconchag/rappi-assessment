@@ -13,6 +13,7 @@ export type ProctoringData = {
   fs_exit_count: number
   rclick_count: number
   key_block_count: number
+  screenshot_attempts: number
   honeypot_fails: number
   warning_count: number
   fraud_score: number
