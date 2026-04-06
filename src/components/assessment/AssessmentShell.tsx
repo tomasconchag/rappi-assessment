@@ -71,6 +71,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const proctorRef      = useRef<ReturnType<typeof useProctor> | null>(null)
   const snapTimersRef   = useRef<ReturnType<typeof setTimeout>[]>([])
   const snapStreamRef   = useRef<MediaStream | null>(null)
+  const snapVideoRef    = useRef<HTMLVideoElement | null>(null)
   const startTimeRef    = useRef<number | null>(null)
   // Roleplay screen recording — started on prep screen, stopped when call ends
   const roleRecorderRef     = useRef<MediaRecorder | null>(null)
@@ -143,38 +144,43 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     return () => clearTimeout(t)
   }, [state.screen, state.casoAnswers, state.mathAnswers]) // eslint-disable-line
 
+  const takeSnap = useCallback(() => {
+    const video = snapVideoRef.current
+    if (!video || video.readyState < 2) return // not loaded yet
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = 320; canvas.height = 240
+      canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 240)
+      const img = canvas.toDataURL('image/jpeg', 0.5)
+      proctorRef.current?.addSnapshot(img)
+    } catch {}
+  }, [])
+
   const initSnapshots = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true })
       snapStreamRef.current = stream
-      const totalDuration = 25 * 60 * 1000
-      const baseInterval = 60 * 1000
-      let elapsed = 30000 + Math.random() * 30000
-      while (elapsed < totalDuration) {
-        const d = elapsed
-        const t = setTimeout(() => takeSnap(), d)
-        snapTimersRef.current.push(t)
-        elapsed += baseInterval + (Math.random() * 30000 - 15000)
-      }
-    } catch {}
-  }, []) // eslint-disable-line
 
-  const takeSnap = useCallback(() => {
-    const stream = snapStreamRef.current
-    if (!stream) return
-    try {
+      // Create a persistent video element that stays playing for the duration
       const video = document.createElement('video')
       video.srcObject = stream
-      video.play()
-      setTimeout(() => {
-        const canvas = document.createElement('canvas')
-        canvas.width = 320; canvas.height = 240
-        canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 240)
-        const img = canvas.toDataURL('image/jpeg', 0.5)
-        proctorRef.current?.addSnapshot(img)
-      }, 500)
+      video.muted = true
+      video.playsInline = true
+      snapVideoRef.current = video
+      await video.play()
+
+      // Schedule snapshots every ~30s (with small random jitter ±5s)
+      const totalDuration = 25 * 60 * 1000
+      const baseInterval  = 30 * 1000
+      let elapsed = baseInterval // first snap at ~30s
+      while (elapsed < totalDuration) {
+        const d = elapsed + (Math.random() * 10000 - 5000) // ±5s jitter
+        const t = setTimeout(() => takeSnap(), Math.max(d, 5000))
+        snapTimersRef.current.push(t)
+        elapsed += baseInterval
+      }
     } catch {}
-  }, [])
+  }, [takeSnap])
 
   const beginAssessment = useCallback(() => {
     goFullscreen()
@@ -248,6 +254,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     snapTimersRef.current.forEach(t => clearTimeout(t))
     snapStreamRef.current?.getTracks().forEach(t => t.stop())
+    if (snapVideoRef.current) { snapVideoRef.current.pause(); snapVideoRef.current.srcObject = null }
 
     const proctoringData = proctor.getData()
     const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
