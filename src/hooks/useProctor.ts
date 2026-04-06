@@ -148,15 +148,21 @@ export function useProctor(options: {
     }
 
     // Window blur: fires when the browser window loses focus (e.g. click on another monitor/app)
-    // Only counts when the tab is still visible — distinguishes from tab switches
+    // We defer 150ms so visibilitychange fires first — if the tab is hidden by then it was
+    // a tab/app switch (already tracked), not a second-monitor focus change.
+    const blurTs = { v: 0 }
     const onWindowBlur = () => {
       if (!activeRef.current) return
-      if (document.hidden) return // already tracked by visibilitychange
-      state.current.windowBlur++
-      state.current.windowBlurLeft = Date.now()
-      logEv('window_blur')
-      if (state.current.windowBlur === 1) warn('👀 Cambio de ventana detectado', 'Se detectó que cambiaste a otra ventana o monitor. Esto queda registrado.')
-      else if (state.current.windowBlur === 3) warn('🚨 Múltiples cambios de ventana', 'Has cambiado de ventana 3 veces. Esto afectará significativamente tu evaluación.')
+      blurTs.v = Date.now()
+      setTimeout(() => {
+        if (!activeRef.current) return
+        if (document.hidden) return // tab switch — already handled by visibilitychange
+        state.current.windowBlur++
+        state.current.windowBlurLeft = blurTs.v
+        logEv('window_blur')
+        if (state.current.windowBlur === 1) warn('👀 Cambio de ventana detectado', 'Se detectó que cambiaste a otra ventana o monitor. Esto queda registrado.')
+        else if (state.current.windowBlur === 3) warn('🚨 Múltiples cambios de ventana', 'Has cambiado de ventana 3 veces. Esto afectará significativamente tu evaluación.')
+      }, 150)
     }
 
     const onWindowFocus = () => {
