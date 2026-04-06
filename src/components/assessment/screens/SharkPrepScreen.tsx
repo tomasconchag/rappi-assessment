@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Tag } from '@/components/ui/Tag'
 import { useTimer } from '@/hooks/useTimer'
 import { fmtTime } from '@/lib/scoring'
+import { SharkCriteria } from './SharkCriteria'
 import type { SharkScenario } from '@/types/assessment'
 
 interface Props {
@@ -55,6 +56,9 @@ export function SharkPrepScreen({ scenario, onReady }: Props) {
           <span style={{ color: 'var(--dim)' }}>— {scenario.desc}</span>
         </p>
       </div>
+
+      {/* Evaluation criteria */}
+      <SharkCriteria />
 
       {/* Timer card */}
       <div className="anim2" style={{

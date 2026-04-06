@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Tag } from '@/components/ui/Tag'
 import { useVideoRecorder } from '@/hooks/useVideoRecorder'
 import { fmtTime } from '@/lib/scoring'
+import { SharkCriteria } from './SharkCriteria'
 import type { SharkScenario } from '@/types/assessment'
 
 interface Props {
@@ -63,6 +64,9 @@ export function SharkRecordScreen({ scenario, onDone }: Props) {
           </div>
         )}
       </div>
+
+      {/* Evaluation criteria */}
+      <SharkCriteria />
 
       {/* Video container */}
       <div className="anim1" style={{
