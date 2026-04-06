@@ -676,7 +676,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       {/* ── Screen router ── */}
       {state.screen === 'welcome' && <WelcomeScreen onSubmit={handleCandidateSubmit} clerkUser={clerkUser} cohortDeadline={cohortDeadline} />}
       {state.screen === 'context' && <ContextScreen name={state.candidate.name} onStart={beginAssessment} enabledSections={liveConfig.enabled_sections} />}
-      {state.screen === 'shark_intro' && <SharkIntroScreen scenario={liveConfig.shark_scenario} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_prep' })} />}
+      {state.screen === 'shark_intro' && <SharkIntroScreen onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_prep' })} />}
       {state.screen === 'shark_prep' && <SharkPrepScreen scenario={liveConfig.shark_scenario} onReady={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_record' })} />}
       {state.screen === 'shark_record' && (
         <SharkRecordScreen

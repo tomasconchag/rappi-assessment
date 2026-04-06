@@ -2,17 +2,14 @@
 
 import { Button } from '@/components/ui/Button'
 import { Tag } from '@/components/ui/Tag'
-import type { SharkScenario } from '@/types/assessment'
 
 interface Props {
-  scenario: SharkScenario
   onStart: () => void
 }
 
 const steps = [
-  { n: '1', text: '<strong>Lee el escenario:</strong> Entiende el problema del restaurante, sus números y su frustración.' },
-  { n: '2', text: '<strong>Preparación (2 minutos):</strong> Tienes 2 minutos cronometrados para preparar tu pitch mentalmente.' },
-  { n: '3', text: '<strong>Grabación (máx. 90 seg):</strong> Grabarás tu pitch en video. Habla a la cámara como si el dueño del restaurante estuviera frente a ti.' },
+  { n: '1', text: '<strong>Preparación (3 minutos):</strong> Al hacer clic en "Empezar preparación" verás el escenario del restaurante. Tienes 3 minutos cronometrados para leerlo y preparar tu pitch.' },
+  { n: '2', text: '<strong>Grabación (máx. 90 seg):</strong> Grabarás tu pitch en video. Habla a la cámara como si el dueño del restaurante estuviera frente a ti.' },
 ]
 
 const criteria = [
@@ -22,7 +19,7 @@ const criteria = [
   { text: '<strong>Comunicación:</strong> ¿Eres claro, seguro y persuasivo?' },
 ]
 
-export function SharkIntroScreen({ scenario, onStart }: Props) {
+export function SharkIntroScreen({ onStart }: Props) {
   return (
     <div className="anim">
       <Tag color="red">Ejercicio 1 de 3 · SharkTank</Tag>
@@ -86,52 +83,25 @@ export function SharkIntroScreen({ scenario, onStart }: Props) {
         </ul>
       </div>
 
-      {/* Scenario card */}
+      {/* Hint card */}
       <div className="anim1" style={{
-        background: 'var(--card)',
-        border: '1px solid rgba(224,53,84,.2)',
-        borderLeft: '3px solid var(--red)',
-        borderRadius: 'var(--r)',
-        padding: '28px 32px',
-        marginBottom: 16,
-        boxShadow: '0 0 30px rgba(224,53,84,.08), inset 0 1px 0 rgba(255,255,255,.05)',
-      }}>
-        <div style={{
-          fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
-          textTransform: 'uppercase', letterSpacing: '1.5px',
-          color: '#f07090', marginBottom: 14, fontWeight: 500,
-        }}>
-          📋 Tu escenario
-        </div>
-        <p style={{ fontSize: 14.5, lineHeight: 1.8, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--text)' }}>
-          <strong>{scenario.name}</strong>{' '}
-          <span style={{ color: 'var(--dim)' }}>— {scenario.desc}</span>
-        </p>
-      </div>
-
-      {/* Mission card */}
-      <div className="anim2" style={{
         background: 'rgba(224,53,84,.05)',
         border: '1px solid rgba(224,53,84,.15)',
         borderLeft: '3px solid var(--red)',
         borderRadius: 'var(--r)',
-        padding: '28px 32px',
+        padding: '20px 28px',
         marginBottom: 36,
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,.04)',
+        display: 'flex', alignItems: 'flex-start', gap: 14,
       }}>
-        <div style={{
-          fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
-          textTransform: 'uppercase', letterSpacing: '1.5px',
-          color: '#f07090', marginBottom: 14, fontWeight: 500,
-        }}>
-          🎯 Tu misión
-        </div>
-        <p style={{ fontSize: 14.5, lineHeight: 1.8, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--text)' }}>
-          {scenario.mission}
+        <span style={{ fontSize: 20, flexShrink: 0 }}>⏱</span>
+        <p style={{ fontSize: 13.5, lineHeight: 1.7, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)', margin: 0 }}>
+          El escenario del restaurante se revelará <strong style={{ color: 'var(--text)' }}>una vez inicies la preparación</strong>.
+          Tendrás <strong style={{ color: 'var(--text)' }}>3 minutos</strong> para leerlo y preparar tu pitch antes de grabar.
         </p>
       </div>
 
-      <div className="anim3" style={{ display: 'flex', justifyContent: 'center' }}>
+      <div className="anim2" style={{ display: 'flex', justifyContent: 'center' }}>
         <Button variant="red" onClick={onStart}>
           Entendido — Empezar preparación ⏱
         </Button>
