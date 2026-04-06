@@ -79,6 +79,7 @@ export default async function SettingsPage() {
             <MathModeToggle
               configId={configData.id}
               currentMode={(configData.math_mode as 'questions' | 'spreadsheet') || 'questions'}
+              currentVersion={configData.math_version || 'random'}
             />
           </div>
 
