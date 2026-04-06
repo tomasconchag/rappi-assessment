@@ -3,10 +3,71 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AssessmentShell } from '@/components/assessment/AssessmentShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import type { AssessmentConfig, Question } from '@/types/assessment'
+import type { AssessmentConfig, Question, CasoBankEntry } from '@/types/assessment'
 import type { SectionId } from '@/lib/challenges'
 
-export default async function AssessmentPage() {
+// Assign (or retrieve) a cohort case for the given email, returns the CasoBankEntry or null
+async function resolveCohortCase(
+  cohort: Record<string, unknown>,
+  email: string,
+): Promise<{ casoBankEntry: CasoBankEntry | null; enabledSections: string[] | null }> {
+  const supabase = createAdminClient()
+  const normalizedEmail = email.toLowerCase().trim()
+
+  const { data: existingMember } = await supabase
+    .from('cohort_members')
+    .select('*')
+    .eq('cohort_id', cohort.id as string)
+    .eq('email', normalizedEmail)
+    .maybeSingle()
+
+  let assignedCasoId: string | null = existingMember?.assigned_caso_id ?? null
+
+  if (!assignedCasoId && cohort.caso_mode !== 'global') {
+    if (cohort.caso_mode === 'fixed' && cohort.fixed_caso_id) {
+      assignedCasoId = cohort.fixed_caso_id as string
+    } else if (cohort.caso_mode === 'random') {
+      let query = supabase.from('caso_bank').select('id')
+      if (cohort.difficulty_filter) query = query.eq('difficulty', cohort.difficulty_filter as string)
+      const { data: pool } = await query
+      if (pool && pool.length > 0) {
+        assignedCasoId = pool[Math.floor(Math.random() * pool.length)].id as string
+      }
+    }
+  }
+
+  if (!existingMember) {
+    await supabase.from('cohort_members').insert({
+      cohort_id: cohort.id,
+      email: normalizedEmail,
+      assigned_caso_id: assignedCasoId,
+      join_method: 'link',
+      first_accessed_at: new Date().toISOString(),
+    })
+  } else {
+    const updates: Record<string, unknown> = {}
+    if (!existingMember.assigned_caso_id && assignedCasoId) updates.assigned_caso_id = assignedCasoId
+    if (!existingMember.first_accessed_at) updates.first_accessed_at = new Date().toISOString()
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('cohort_members').update(updates).eq('id', existingMember.id)
+    }
+  }
+
+  let casoBankEntry: CasoBankEntry | null = null
+  if (assignedCasoId) {
+    const { data: caso } = await supabase.from('caso_bank').select('*').eq('id', assignedCasoId).single()
+    casoBankEntry = caso ?? null
+  }
+
+  return { casoBankEntry, enabledSections: (cohort.enabled_sections as string[] | null) ?? null }
+}
+
+export default async function AssessmentPage(props: {
+  searchParams: Promise<{ c?: string }>
+}) {
+  const searchParams = await props.searchParams
+  const cohortToken = searchParams.c ?? null
+
   const [clerkUser, supabase] = await Promise.all([currentUser(), createClient()])
 
   const { data: configData } = await supabase
@@ -57,13 +118,11 @@ export default async function AssessmentPage() {
     }
   }
 
-  // If 'random', pick A or B at page load time (server-side, per candidate session)
   const rawVersion: string = configData.math_version || 'A'
   const mathVersion: string = rawVersion === 'random'
     ? (Math.random() < 0.5 ? 'A' : 'B')
     : rawVersion
 
-  // Fetch non-math questions (caso) plus math questions filtered by version
   const [{ data: casoQuestionsData }, { data: mathQuestionsData }] = await Promise.all([
     supabase
       .from('assessment_questions')
@@ -79,9 +138,34 @@ export default async function AssessmentPage() {
       .order('position', { ascending: true }),
   ])
 
-  // Fetch active banco de caso if set
-  let casoBankEntry = null
-  if (configData.active_caso_id) {
+  // Resolve case: cohort overrides global active_caso_id
+  let casoBankEntry: CasoBankEntry | null = null
+  let cohortEnabledSections: string[] | null = null
+
+  if (cohortToken) {
+    // Fetch cohort config
+    const { data: cohortData } = await supabase
+      .from('cohorts')
+      .select('*')
+      .eq('invite_token', cohortToken)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (cohortData) {
+      if (clerkUser) {
+        // Clerk user: do full server-side assignment now
+        const email = clerkUser.emailAddresses[0]?.emailAddress ?? ''
+        const result = await resolveCohortCase(cohortData, email)
+        casoBankEntry = result.casoBankEntry
+        cohortEnabledSections = result.enabledSections
+      } else {
+        // No Clerk user yet: just pass the token to the shell, assignment deferred to after email submit
+        cohortEnabledSections = (cohortData.enabled_sections as string[] | null) ?? null
+        // casoBankEntry stays null — shell will call /api/cohort-assign after email
+      }
+    }
+  } else if (configData.active_caso_id) {
+    // No cohort — use global active caso
     const { data: bankCase } = await supabase
       .from('caso_bank')
       .select('*')
@@ -90,7 +174,6 @@ export default async function AssessmentPage() {
     casoBankEntry = bankCase ?? null
   }
 
-  // When a bank case is active, use its question instead of DB caso questions
   const casoQuestions: Question[] = casoBankEntry
     ? [{
         id: `bank-${casoBankEntry.id}`,
@@ -110,6 +193,10 @@ export default async function AssessmentPage() {
       } as Question]
     : (casoQuestionsData || []) as Question[]
 
+  // Sections: cohort override → global config → default
+  const globalSections = (configData.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
+  const effectiveSections = (cohortEnabledSections as SectionId[] | null) ?? globalSections
+
   const config: AssessmentConfig = {
     id: configData.id,
     label: configData.label,
@@ -118,7 +205,7 @@ export default async function AssessmentPage() {
     questions: ([...casoQuestions, ...(mathQuestionsData || [])]) as Question[],
     math_version: mathVersion,
     math_context: configData.math_context || undefined,
-    enabled_sections: (configData.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math'],
+    enabled_sections: effectiveSections,
     caso_bank_entry: casoBankEntry,
     active_caso_id: configData.active_caso_id ?? null,
   }
@@ -133,7 +220,11 @@ export default async function AssessmentPage() {
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px', minHeight: '100vh' }}>
       <ErrorBoundary>
-        <AssessmentShell config={config} clerkUser={clerkUserData} />
+        <AssessmentShell
+          config={config}
+          clerkUser={clerkUserData}
+          cohortToken={cohortToken}
+        />
       </ErrorBoundary>
     </main>
   )

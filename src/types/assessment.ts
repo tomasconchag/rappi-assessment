@@ -81,6 +81,36 @@ export type AssessmentConfig = {
   active_caso_id?: string | null
 }
 
+export type CasoMode = 'global' | 'fixed' | 'random'
+
+export type Cohort = {
+  id: string
+  name: string
+  description: string
+  invite_token: string
+  is_active: boolean
+  starts_at: string | null
+  ends_at: string | null
+  enabled_sections: string[] | null
+  caso_mode: CasoMode
+  fixed_caso_id: string | null
+  difficulty_filter: string | null
+  created_at: string
+}
+
+export type CohortMember = {
+  id: string
+  cohort_id: string
+  email: string
+  assigned_caso_id: string | null
+  join_method: 'manual' | 'link'
+  first_accessed_at: string | null
+  created_at: string
+  // joined via query
+  caso_title?: string | null
+  caso_difficulty?: string | null
+}
+
 export type CandidateInfo = {
   name: string
   email: string

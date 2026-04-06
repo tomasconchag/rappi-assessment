@@ -34,6 +34,21 @@ const navItems = [
     children: null,
   },
   {
+    href: '/admin/cohorts',
+    label: 'Cohortes',
+    exact: false,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="4" cy="5" r="2" fill="currentColor" opacity=".8"/>
+        <circle cx="12" cy="5" r="2" fill="currentColor" opacity=".5"/>
+        <circle cx="8" cy="5" r="2" fill="currentColor" opacity=".65"/>
+        <path d="M1 13c0-1.7 1.3-3 3-3s3 1.3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".8"/>
+        <path d="M9 13c0-1.7 1.3-3 3-3s3 1.3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".5"/>
+      </svg>
+    ),
+    children: null,
+  },
+  {
     href: '/admin/challenges',
     label: 'Challenges',
     exact: false,

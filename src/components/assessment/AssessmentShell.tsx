@@ -33,6 +33,7 @@ interface ClerkUser {
 interface Props {
   config: AssessmentConfig
   clerkUser?: ClerkUser | null
+  cohortToken?: string | null
 }
 
 function buildScreenToStep(enabled: string[]): Record<string, number> {
@@ -58,7 +59,9 @@ function buildScreenToStep(enabled: string[]): Record<string, number> {
   return map
 }
 
-export function AssessmentShell({ config, clerkUser }: Props) {
+export function AssessmentShell({ config, clerkUser, cohortToken }: Props) {
+  // liveConfig allows cohort case assignment to update config after email submit
+  const [liveConfig, setLiveConfig] = useState<AssessmentConfig>(config)
   const [state, dispatch] = useAssessmentState()
   const [warnModal,    setWarnModal]    = useState<{ title: string; msg: string } | null>(null)
   const [proctorScore, setProctorScore] = useState(0)
@@ -74,7 +77,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
   const roleMimeRef         = useRef('video/webm')
   const roleCameraStreamRef = useRef<MediaStream | null>(null)
 
-  const enabled = config?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
+  const enabled = liveConfig?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
   const stepLabels = [
     ...(enabled.includes('sharktank') ? ['SharkTank'] : []),
     ...(enabled.includes('roleplay') ? ['Role Play'] : []),
@@ -175,7 +178,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
   const beginAssessment = useCallback(() => {
     goFullscreen()
     initSnapshots()
-    const enabledSections = config.enabled_sections ?? ['sharktank', 'caso', 'math']
+    const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
     if (enabledSections.includes('sharktank')) dispatch({ type: 'GO_SCREEN', screen: 'shark_intro' })
     else if (enabledSections.includes('roleplay')) dispatch({ type: 'GO_SCREEN', screen: 'roleplay_intro' })
     else if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
@@ -184,8 +187,60 @@ export function AssessmentShell({ config, clerkUser }: Props) {
 
   const handleCandidateSubmit = useCallback(async (candidate: CandidateInfo) => {
     dispatch({ type: 'SET_CANDIDATE', candidate })
+
+    // If a cohort token is present and the caso_bank_entry wasn't resolved server-side
+    // (happens for non-Clerk users), do the assignment now that we have the email.
+    if (cohortToken && !liveConfig.caso_bank_entry) {
+      try {
+        const res = await fetch('/api/cohort-assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: cohortToken, email: candidate.email }),
+        })
+        if (res.ok) {
+          const data = await res.json() as {
+            casoBankEntry: import('@/types/assessment').CasoBankEntry | null
+            enabledSections: string[] | null
+          }
+          if (data.casoBankEntry || data.enabledSections) {
+            const bankEntry = data.casoBankEntry
+            const newSections = (data.enabledSections as import('@/lib/challenges').SectionId[] | null)
+              ?? liveConfig.enabled_sections
+            const syntheticQ: import('@/types/assessment').Question | null = bankEntry ? {
+              id: `bank-${bankEntry.id}`,
+              section: 'caso',
+              position: 0,
+              content: bankEntry.question,
+              sub_label: null,
+              placeholder: 'Desarrolla tu respuesta con datos, análisis y plan de acción concreto...',
+              time_seconds: 900,
+              difficulty: 'hard',
+              points: 100,
+              correct_answer: null,
+              is_honeypot: false,
+              is_flex_answer: false,
+              show_data: true,
+              question_type: 'free_text',
+            } : null
+            const mathQs = liveConfig.questions.filter(q => q.section === 'math')
+            const casoQs = bankEntry && syntheticQ
+              ? [syntheticQ]
+              : liveConfig.questions.filter(q => q.section === 'caso')
+            setLiveConfig(prev => ({
+              ...prev,
+              enabled_sections: newSections ?? prev.enabled_sections,
+              caso_bank_entry: bankEntry ?? prev.caso_bank_entry,
+              questions: [...casoQs, ...mathQs],
+            }))
+          }
+        }
+      } catch {
+        // Cohort assign failed silently — continue with current config
+      }
+    }
+
     dispatch({ type: 'GO_SCREEN', screen: 'context' })
-  }, [dispatch])
+  }, [dispatch, cohortToken, liveConfig])
 
   const submitAll = useCallback(async () => {
     dispatch({ type: 'SET_SUBMITTING', value: true })
@@ -194,10 +249,10 @@ export function AssessmentShell({ config, clerkUser }: Props) {
     snapStreamRef.current?.getTracks().forEach(t => t.stop())
 
     const proctoringData = proctor.getData()
-    const mathQs = config.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
+    const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
     const { correct, total, pct: mathPct, honeypotFails, details } = scoreMath(mathQs, state.mathAnswers)
     const { answered, pct: casoPct } = scoreCaso(state.casoAnswers, casoQuestions.length || 4)
-    const overall = calcOverall(state.videoRecorded, casoPct, mathPct, config.enabled_sections)
+    const overall = calcOverall(state.videoRecorded, casoPct, mathPct, liveConfig.enabled_sections)
 
     proctoringData.honeypot_fails = honeypotFails
     const fs = fraudScore(proctoringData)
@@ -278,7 +333,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       const snapshotPaths = snapshotResults.filter((p): p is string => p !== null)
 
       const submissionBody = JSON.stringify({
-        candidate: state.candidate, configId: config.id,
+        candidate: state.candidate, configId: liveConfig.id,
         clerkUserId: clerkUser?.id ?? null,
         videoPath, videoMimeType: state.videoMimeType, videoRecorded: state.videoRecorded,
         roleplayCompleted: state.roleplayCompleted, roleplayVideoPath,
@@ -415,20 +470,20 @@ export function AssessmentShell({ config, clerkUser }: Props) {
   }, [dispatch])
 
   const handleRolePlayNext = useCallback(() => {
-    const enabledSections = config.enabled_sections ?? ['sharktank', 'caso', 'math', 'roleplay']
+    const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math', 'roleplay']
     if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
     else if (enabledSections.includes('math')) dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
     else { dispatch({ type: 'GO_SCREEN', screen: 'completion' }); submitAll() }
   }, [config, dispatch, submitAll])
 
-  const casoQuestions = config.questions.filter(q => q.section === 'caso').sort((a, b) => a.position - b.position)
-  const mathQuestions = config.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
+  const casoQuestions = liveConfig.questions.filter(q => q.section === 'caso').sort((a, b) => a.position - b.position)
+  const mathQuestions = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
 
   const handleCasoNext = useCallback((value: string, timeSpent: number) => {
     const q = casoQuestions[state.casoIdx]
     if (q) dispatch({ type: 'SET_CASO_ANSWER', idx: state.casoIdx, questionId: q.id, value, timeSpent })
     if (state.casoIdx + 1 >= casoQuestions.length) {
-      const enabledSections = config.enabled_sections ?? ['sharktank', 'caso', 'math']
+      const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
       if (enabledSections.includes('math')) {
         dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
       } else {
@@ -612,12 +667,12 @@ export function AssessmentShell({ config, clerkUser }: Props) {
 
       {/* ── Screen router ── */}
       {state.screen === 'welcome' && <WelcomeScreen onSubmit={handleCandidateSubmit} clerkUser={clerkUser} />}
-      {state.screen === 'context' && <ContextScreen name={state.candidate.name} onStart={beginAssessment} enabledSections={config.enabled_sections} />}
-      {state.screen === 'shark_intro' && <SharkIntroScreen scenario={config.shark_scenario} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_prep' })} />}
-      {state.screen === 'shark_prep' && <SharkPrepScreen scenario={config.shark_scenario} onReady={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_record' })} />}
+      {state.screen === 'context' && <ContextScreen name={state.candidate.name} onStart={beginAssessment} enabledSections={liveConfig.enabled_sections} />}
+      {state.screen === 'shark_intro' && <SharkIntroScreen scenario={liveConfig.shark_scenario} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_prep' })} />}
+      {state.screen === 'shark_prep' && <SharkPrepScreen scenario={liveConfig.shark_scenario} onReady={() => dispatch({ type: 'GO_SCREEN', screen: 'shark_record' })} />}
       {state.screen === 'shark_record' && (
         <SharkRecordScreen
-          scenario={config.shark_scenario}
+          scenario={liveConfig.shark_scenario}
           onDone={(blob, mimeType) => {
             dispatch({ type: 'SET_VIDEO', blob, mimeType })
             dispatch({ type: 'GO_SCREEN', screen: 'shark_done' })
@@ -626,7 +681,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       )}
       {state.screen === 'shark_done' && (
         <SharkDoneScreen videoBlob={state.videoBlob} onNext={() => {
-        const enabledSections = config.enabled_sections ?? ['sharktank', 'caso', 'math']
+        const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
         if (enabledSections.includes('roleplay')) dispatch({ type: 'GO_SCREEN', screen: 'roleplay_intro' })
         else if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
         else if (enabledSections.includes('math')) dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
@@ -640,7 +695,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
       {state.screen === 'caso_intro' && (
         <CasoIntroScreen
           onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'caso_question' })}
-          casoBankEntry={config.caso_bank_entry ?? null}
+          casoBankEntry={liveConfig.caso_bank_entry ?? null}
         />
       )}
       {state.screen === 'caso_question' && casoQuestions[state.casoIdx] && (
@@ -649,13 +704,13 @@ export function AssessmentShell({ config, clerkUser }: Props) {
           question={casoQuestions[state.casoIdx]}
           idx={state.casoIdx}
           total={casoQuestions.length}
-          casoContext={config.caso_context}
-          casoBankEntry={config.caso_bank_entry ?? null}
+          casoContext={liveConfig.caso_context}
+          casoBankEntry={liveConfig.caso_bank_entry ?? null}
           initialValue={state.casoAnswers[casoQuestions[state.casoIdx].id] || ''}
           onNext={handleCasoNext}
         />
       )}
-      {state.screen === 'math_intro' && <MathIntroScreen mathContext={config.math_context} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'math_question' })} />}
+      {state.screen === 'math_intro' && <MathIntroScreen mathContext={liveConfig.math_context} onStart={() => dispatch({ type: 'GO_SCREEN', screen: 'math_question' })} />}
       {state.screen === 'math_question' && mathQuestions[state.mathIdx] && (
         <MathQuestionScreen
           key={state.mathIdx}
@@ -663,7 +718,7 @@ export function AssessmentShell({ config, clerkUser }: Props) {
           idx={state.mathIdx}
           total={mathQuestions.length}
           initialValue={state.mathAnswers[state.mathIdx] || ''}
-          mathContext={config.math_context}
+          mathContext={liveConfig.math_context}
           onNext={handleMathNext}
         />
       )}
