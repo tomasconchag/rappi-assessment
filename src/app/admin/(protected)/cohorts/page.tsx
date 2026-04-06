@@ -28,6 +28,12 @@ export default async function CohortsPage() {
 
   return (
     <div style={{ maxWidth: 900 }}>
+      <style>{`
+        .cohort-card:hover {
+          border-color: rgba(61,85,232,.3) !important;
+          box-shadow: 0 0 0 3px rgba(61,85,232,.06) !important;
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 16 }}>
         <div>
@@ -75,7 +81,7 @@ export default async function CohortsPage() {
 
             return (
               <Link key={c.id} href={`/admin/cohorts/${c.id}`} style={{ textDecoration: 'none' }}>
-                <div style={{
+                <div className="cohort-card" style={{
                   background: 'var(--card)',
                   border: '1px solid var(--border)',
                   borderRadius: 12,
@@ -85,16 +91,7 @@ export default async function CohortsPage() {
                   gap: 20,
                   transition: 'border-color .15s, box-shadow .15s',
                   cursor: 'pointer',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(61,85,232,.3)'
-                  ;(e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 3px rgba(61,85,232,.06)'
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
-                  ;(e.currentTarget as HTMLElement).style.boxShadow = 'none'
-                }}
-                >
+                }}>
                   {/* Status dot */}
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%',
