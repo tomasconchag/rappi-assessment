@@ -79,6 +79,13 @@ const navItems = [
     ],
   },
   {
+    href: '/admin/roleplay',
+    label: 'Role Play',
+    exact: true,
+    icon: <span style={{ fontSize: 16, lineHeight: 1 }}>📞</span>,
+    children: null,
+  },
+  {
     href: '/admin/settings',
     label: 'Taller de Math',
     exact: true,

@@ -1,7 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MathVersionToggle } from './MathVersionToggle'
 import { MathModeToggle } from './MathModeToggle'
-import { VoiceProviderToggle } from './VoiceProviderToggle'
 import { getQuestionList } from '@/lib/mathSpreadsheetTemplates'
 
 export default async function SettingsPage() {
@@ -10,7 +9,7 @@ export default async function SettingsPage() {
   const [{ data: configData }, { data: allMathQs }] = await Promise.all([
     supabase
       .from('assessment_configs')
-      .select('id, label, math_version, math_mode, spreadsheet_q_overrides, voice_provider')
+      .select('id, label, math_version, math_mode, spreadsheet_q_overrides')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -72,20 +71,6 @@ export default async function SettingsPage() {
             <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono, monospace', marginTop: 4 }}>
               ID: {configData.id}
             </div>
-          </div>
-
-          {/* Voice Provider selector */}
-          <div style={{ ...card, borderTop: '3px solid #f59e0b' }}>
-            <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 6 }}>
-              Role Play · Proveedor de Voz
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.6, marginBottom: 20 }}>
-              Elige cómo los candidatos realizarán la llamada del roleplay. Vapi funciona directo en el navegador; Arbol AI realiza una llamada telefónica real al candidato.
-            </p>
-            <VoiceProviderToggle
-              configId={configData.id}
-              currentProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
-            />
           </div>
 
           {/* Math mode selector */}
