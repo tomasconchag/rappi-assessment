@@ -89,21 +89,48 @@ export async function POST(req: NextRequest) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Upsert candidate
-    const { data: cand, error: candErr } = await supabase
-      .from('candidates')
-      .upsert(
-        { name: candidate.name, email: candidate.email, cedula: candidate.cedula, celular: candidate.celular },
-        { onConflict: 'email' }
-      )
-      .select('id')
-      .single()
+    // Resolve candidate: SELECT first (avoids unique-constraint races), INSERT only if truly new.
+    // Two lookups: by email (primary) then by cedula (handles same person, different email).
+    let cand: { id: string } | null = null
 
-    if (candErr) {
-      console.error('[submissions] candidate upsert error:', candErr.message)
-      return Response.json({ error: candErr.message }, { status: 500 })
+    const { data: byEmail } = await supabase
+      .from('candidates').select('id').eq('email', email).maybeSingle()
+
+    if (byEmail) {
+      cand = byEmail
+      console.log(`[submissions] candidate found by email id=${cand.id}`)
+    } else if (candidate.cedula) {
+      const { data: byCedula } = await supabase
+        .from('candidates').select('id').eq('cedula', candidate.cedula).maybeSingle()
+      if (byCedula) {
+        cand = byCedula
+        console.log(`[submissions] candidate found by cedula id=${cand.id}`)
+      }
     }
-    console.log(`[submissions] candidate upserted id=${cand.id}`)
+
+    if (!cand) {
+      // Truly new candidate — insert
+      const { data: newCand, error: insertErr } = await supabase
+        .from('candidates')
+        .insert({ name: candidate.name, email: candidate.email, cedula: candidate.cedula, celular: candidate.celular })
+        .select('id').single()
+
+      if (insertErr) {
+        // Race condition: another request inserted first — retry SELECT
+        console.warn('[submissions] candidate insert conflict, retrying SELECT:', insertErr.message)
+        const { data: raceByEmail } = await supabase.from('candidates').select('id').eq('email', email).maybeSingle()
+        const { data: raceByCedula } = !raceByEmail && candidate.cedula
+          ? await supabase.from('candidates').select('id').eq('cedula', candidate.cedula).maybeSingle()
+          : { data: null }
+        cand = raceByEmail ?? raceByCedula ?? null
+      } else {
+        cand = newCand
+        console.log(`[submissions] candidate inserted id=${cand?.id}`)
+      }
+    }
+
+    if (!cand) return Response.json({ error: 'No se pudo resolver el candidato' }, { status: 500 })
+    console.log(`[submissions] candidate id=${cand.id}`)
 
     // Fetch enabled_sections + challenge_weights from config so we store them with the submission
     const { data: configData } = await supabase
