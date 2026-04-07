@@ -88,7 +88,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       ? liveConfig.math_version
       : randomVersion()
   )
-  const [spreadsheetAnswers, setSpreadsheetAnswers] = useState<SpreadsheetAnswer[]>([])
+  const spreadsheetAnswersRef = useRef<SpreadsheetAnswer[]>([])
 
   const enabled = liveConfig?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
   const stepLabels = [
@@ -219,8 +219,9 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           const data = await res.json() as {
             casoBankEntry: import('@/types/assessment').CasoBankEntry | null
             enabledSections: string[] | null
+            mathModeOverride: 'questions' | 'spreadsheet' | null
           }
-          if (data.casoBankEntry || data.enabledSections) {
+          if (data.casoBankEntry || data.enabledSections || data.mathModeOverride) {
             const bankEntry = data.casoBankEntry
             const newSections = (data.enabledSections as import('@/lib/challenges').SectionId[] | null)
               ?? liveConfig.enabled_sections
@@ -249,6 +250,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
               enabled_sections: newSections ?? prev.enabled_sections,
               caso_bank_entry: bankEntry ?? prev.caso_bank_entry,
               questions: [...casoQs, ...mathQs],
+              ...(data.mathModeOverride ? { math_mode: data.mathModeOverride } : {}),
             }))
           }
         }
@@ -260,7 +262,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     dispatch({ type: 'GO_SCREEN', screen: 'context' })
   }, [dispatch, cohortToken, liveConfig])
 
-  const submitAll = useCallback(async () => {
+  const submitAll = useCallback(async (inlineSpreadsheetAnswers?: SpreadsheetAnswer[]) => {
     dispatch({ type: 'SET_SUBMITTING', value: true })
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     snapTimersRef.current.forEach(t => clearTimeout(t))
@@ -272,7 +274,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     let correct: number, total: number, mathPct: number, honeypotFails: number, details: ReturnType<typeof scoreMath>['details']
     if (isSpreadsheetMode) {
       const tmpl = getSpreadsheetVersion(spreadsheetVersion.current)
-      const ssResult = scoreMathSpreadsheet(tmpl, spreadsheetAnswers)
+      const ssResult = scoreMathSpreadsheet(tmpl, inlineSpreadsheetAnswers ?? spreadsheetAnswersRef.current)
       correct = ssResult.correct; total = ssResult.total; mathPct = ssResult.pct
       honeypotFails = 0
       details = ssResult.details.map((d, i) => ({ idx: i, correct: d.correct, pointsAwarded: d.correct ? 1 : 0 }))
@@ -750,7 +752,11 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       {state.screen === 'math_question' && liveConfig.math_mode === 'spreadsheet' && (
         <MathSpreadsheetScreen
           template={getSpreadsheetVersion(spreadsheetVersion.current)}
-          onDone={answers => { setSpreadsheetAnswers(answers); submitAll() }}
+          onDone={answers => {
+            spreadsheetAnswersRef.current = answers
+            dispatch({ type: 'GO_SCREEN', screen: 'completion' })
+            submitAll(answers)
+          }}
         />
       )}
       {state.screen === 'math_question' && liveConfig.math_mode !== 'spreadsheet' && mathQuestions[state.mathIdx] && (

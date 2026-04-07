@@ -96,6 +96,7 @@ export type Cohort = {
   caso_mode: CasoMode
   fixed_caso_id: string | null
   difficulty_filter: string | null
+  math_mode_override: 'questions' | 'spreadsheet' | null
   created_at: string
 }
 

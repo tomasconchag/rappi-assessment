@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Cohort, CasoMode } from '@/types/assessment'
 
+type MathModeOverride = 'global' | 'questions' | 'spreadsheet'
+
 type CaseSummary = { id: string; title: string; difficulty: string }
 
 const DIFFICULTY_OPTIONS = ['Baja', 'Baja-Media', 'Media', 'Media-Alta', 'Alta', 'Muy Alta']
@@ -35,6 +37,7 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
   const [casoMode, setCasoMode]           = useState<CasoMode>(cohort.caso_mode)
   const [fixedCasoId, setFixedCasoId]     = useState<string>(cohort.fixed_caso_id ?? '')
   const [diffFilter, setDiffFilter]       = useState<string>(cohort.difficulty_filter ?? '')
+  const [mathMode, setMathMode]           = useState<MathModeOverride>(cohort.math_mode_override ?? 'global')
   const [saving, setSaving]               = useState(false)
   const [flash, setFlash]                 = useState<string | null>(null)
 
@@ -58,10 +61,11 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           is_active:         isActive,
           starts_at:         startsAt || null,
           ends_at:           endsAt || null,
-          enabled_sections:  sections,
-          caso_mode:         casoMode,
-          fixed_caso_id:     casoMode === 'fixed' ? (fixedCasoId || null) : null,
-          difficulty_filter: casoMode === 'random' ? (diffFilter || null) : null,
+          enabled_sections:    sections,
+          caso_mode:           casoMode,
+          fixed_caso_id:       casoMode === 'fixed' ? (fixedCasoId || null) : null,
+          difficulty_filter:   casoMode === 'random' ? (diffFilter || null) : null,
+          math_mode_override:  mathMode === 'global' ? null : mathMode,
         })
         .eq('id', cohort.id)
       if (error) throw error
@@ -267,6 +271,47 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           )}
         </div>
       </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--border)' }} />
+
+        {/* Math mode */}
+        {sections.includes('math') && (
+          <div>
+            <label style={labelStyle}>Taller de Math</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {([
+                { value: 'global',      label: 'Usar config global',          desc: 'Lo que esté configurado en Settings' },
+                { value: 'questions',   label: 'Preguntas de opción múltiple', desc: 'Modo quiz tradicional' },
+                { value: 'spreadsheet', label: 'Excel / Hoja de cálculo',      desc: 'Prueba con timer de 10 min' },
+              ] as { value: MathModeOverride; label: string; desc: string }[]).map(opt => (
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <div
+                    onClick={() => setMathMode(opt.value)}
+                    style={{
+                      marginTop: 2,
+                      width: 16, height: 16, borderRadius: '50%',
+                      background: mathMode === opt.value ? 'var(--blue)' : 'var(--input)',
+                      border: `1.5px solid ${mathMode === opt.value ? 'var(--blue)' : 'var(--border-mid)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+                    }}
+                  >
+                    {mathMode === opt.value && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>
+                      {opt.label}
+                    </div>
+                    <div style={{ fontSize: 11, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--muted)', marginTop: 1 }}>
+                      {opt.desc}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
       {/* Flash + Save */}
       <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>

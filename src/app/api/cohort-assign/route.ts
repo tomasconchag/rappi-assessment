@@ -93,5 +93,6 @@ export async function POST(req: NextRequest) {
     cohortId: cohort.id,
     enabledSections: cohort.enabled_sections ?? null,
     casoBankEntry,
+    mathModeOverride: cohort.math_mode_override ?? null,
   })
 }
