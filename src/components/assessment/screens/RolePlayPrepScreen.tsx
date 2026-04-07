@@ -1,18 +1,40 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import type { RoleplayCase } from '@/types/assessment'
 
 interface Props {
   onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null) => void
   voiceProvider?: 'vapi' | 'arbol'
   onPhoneCapture?: (phone: string) => void
+  roleplayCase?: RoleplayCase | null
 }
 
 const PREP_SECONDS = 5 * 60
 
-const salesData   = [50, 77, 61, 52, 76, 74, 74]
-const salesLabels = ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4']
-const maxBar      = Math.max(...salesData)
+const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
+  restaurant_name: 'Heladería La Fiore',
+  owner_name: 'Valentina Ríos',
+  owner_gender: 'f',
+  city: 'Cali',
+  category: 'Helados',
+  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
+  ticket_avg: '$29.900',
+  orders_per_week: '~70–75',
+  inactive_time: '2+ meses',
+  strategies: [
+    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
+    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
+  ],
+  opportunities: [
+    'Ads consumen solo el 46% del presupuesto disponible. Rappi co-invierte el 70% — hay presupuesto sin usar.',
+    'Campaña visible solo en Onces y Cena — horario ampliable a otras franjas.',
+    'Cerrado los martes — potencial de apertura o campaña en ese horario.',
+    'Descuentos generan 22X retorno — espacio para incrementar el porcentaje.',
+  ],
+  sales_data: [50, 77, 61, 52, 76, 74, 74],
+  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
+}
 
 function playBeep(frequency: number, duration: number, times = 1) {
   try {
@@ -32,7 +54,10 @@ function playBeep(frequency: number, duration: number, times = 1) {
   } catch { /* ignore */ }
 }
 
-export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture }: Props) {
+export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture, roleplayCase }: Props) {
+  const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
+  const maxBar = Math.max(...rc.sales_data)
+  const ownerTitle = rc.owner_gender === 'f' ? 'Dueña' : 'Dueño'
   const [secondsLeft, setSecondsLeft] = useState(PREP_SECONDS)
   const [recStatus,   setRecStatus]   = useState<'idle' | 'requesting' | 'recording' | 'error'>('idle')
   const [recError,    setRecError]    = useState('')
@@ -584,19 +609,19 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
                 fontFamily: 'Fraunces, serif', fontSize: 22,
                 fontWeight: 700, color: 'var(--text)', marginBottom: 4,
               }}>
-                Heladería La Fiore
+                {rc.restaurant_name}
               </div>
               <div style={{
                 fontFamily: 'DM Sans, sans-serif', fontSize: 13.5,
                 color: 'var(--dim)', lineHeight: 1.6,
               }}>
-                Dueña · <strong style={{ color: 'var(--text)' }}>Valentina Ríos</strong>
+                {ownerTitle} · <strong style={{ color: 'var(--text)' }}>{rc.owner_name}</strong>
               </div>
               <div style={{
                 fontFamily: 'DM Sans, sans-serif', fontSize: 12,
                 color: 'var(--muted)', marginTop: 4,
               }}>
-                Helados · Cali, Colombia &nbsp;|&nbsp; Mié–Lun · 3:00 pm – 9:30 pm
+                {rc.category} · {rc.city}, Colombia &nbsp;|&nbsp; {rc.schedule}
               </div>
             </div>
             <div style={{
@@ -613,7 +638,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               }}>
                 Tu misión
               </strong>
-              Identificar oportunidades de crecimiento y convencer a Valentina de implementar nuevas estrategias con herramientas Rappi. Usa los datos para argumentar con cifras concretas.
+              Identificar oportunidades de crecimiento y convencer a {rc.owner_name} de implementar nuevas estrategias con herramientas Rappi. Usa los datos para argumentar con cifras concretas.
             </div>
           </div>
 
@@ -631,10 +656,10 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
-                { value: '$29.900',        label: 'Ticket promedio',            color: 'var(--text)' },
-                { value: '~70–75',         label: 'Pedidos/semana',             color: 'var(--text)' },
-                { value: '2+ meses',       label: 'Sin cambios de estrategia',  color: '#f59e0b'     },
-                { value: 'Cerrado martes', label: 'Posible día de apertura',    color: '#f59e0b'     },
+                { value: rc.ticket_avg,      label: 'Ticket promedio',           color: 'var(--text)' },
+                { value: rc.orders_per_week, label: 'Pedidos/semana',            color: 'var(--text)' },
+                { value: rc.inactive_time,   label: 'Sin cambios de estrategia', color: '#f59e0b'     },
+                { value: rc.city,            label: 'Ciudad',                    color: 'var(--text)' },
               ].map((stat, i) => (
                 <div key={i} style={{
                   background: 'rgba(255,255,255,.03)',
@@ -671,21 +696,18 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
             }}>
               Estrategias activas
             </div>
-            {[
-              {
-                name: 'Descuentos 5% + PRO', roi: 'ROI: 22X · Bien optimizado',
-                badge: '✅ ACTIVO', badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)',
-              },
-              {
-                name: 'Ads $1.000.000/sem', roi: 'ROI: 3.9X · 46% consumido · co-inv Rappi 70%',
-                badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b',
-              },
-            ].map((s, i) => (
+            {rc.strategies.map((s, i) => {
+              const badgeConfig =
+                s.status === 'active'    ? { badge: '✅ ACTIVO',        badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)' } :
+                s.status === 'underused' ? { badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b' } :
+                                           { badge: '❌ INACTIVO',       badgeColor: 'rgba(255,107,107,.15)', badgeText: '#ff6b6b' }
+              const roiLine = s.note ? `ROI: ${s.roi} · ${s.note}` : `ROI: ${s.roi}`
+              return (
               <div key={i} style={{
                 display: 'flex', alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 padding: '11px 0',
-                borderBottom: i === 0 ? '1px solid var(--border)' : 'none',
+                borderBottom: i < rc.strategies.length - 1 ? '1px solid var(--border)' : 'none',
                 gap: 10,
               }}>
                 <div>
@@ -693,19 +715,20 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
                     {s.name}
                   </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9.5, color: 'var(--muted)' }}>
-                    {s.roi}
+                    {roiLine}
                   </div>
                 </div>
                 <div style={{
                   padding: '4px 9px', borderRadius: 6,
-                  background: s.badgeColor, color: s.badgeText,
+                  background: badgeConfig.badgeColor, color: badgeConfig.badgeText,
                   fontFamily: 'Space Mono, monospace', fontSize: 8.5,
                   fontWeight: 700, letterSpacing: '.5px', flexShrink: 0, marginTop: 2,
                 }}>
-                  {s.badge}
+                  {badgeConfig.badge}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Opportunities */}
@@ -722,16 +745,11 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
             }}>
               💡 Oportunidades detectadas
             </div>
-            {[
-              'Ads consumen solo el 46% del presupuesto disponible. Rappi co-invierte el 70% — hay presupuesto sin usar.',
-              'Campaña visible solo en Onces y Cena — horario ampliable a otras franjas.',
-              'Cerrado los martes — potencial de apertura o campaña en ese horario.',
-              'Descuentos generan 22X retorno — espacio para incrementar el porcentaje.',
-            ].map((opp, i) => (
+            {rc.opportunities.map((opp, i) => (
               <div key={i} style={{
                 display: 'flex', gap: 10, alignItems: 'flex-start',
                 padding: '7px 0',
-                borderBottom: i < 3 ? '1px solid rgba(245,158,11,.1)' : 'none',
+                borderBottom: i < rc.opportunities.length - 1 ? '1px solid rgba(245,158,11,.1)' : 'none',
                 fontFamily: 'DM Sans, sans-serif', fontSize: 12.5,
                 color: i === 0 ? 'var(--text)' : 'var(--dim)', lineHeight: 1.55,
               }}>
@@ -754,7 +772,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               Historial de ventas — pedidos/semana
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
-              {salesData.map((val, i) => (
+              {rc.sales_data.map((val, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
                   <div style={{
                     width: '100%',
@@ -766,7 +784,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-              {salesLabels.map((label, i) => (
+              {rc.sales_labels.map((label, i) => (
                 <div key={i} style={{
                   flex: 1, textAlign: 'center',
                   fontFamily: 'Space Mono, monospace', fontSize: 7,
@@ -778,7 +796,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-              {salesData.map((val, i) => (
+              {rc.sales_data.map((val, i) => (
                 <div key={i} style={{
                   flex: 1, textAlign: 'center',
                   fontFamily: 'Space Mono, monospace', fontSize: 9,

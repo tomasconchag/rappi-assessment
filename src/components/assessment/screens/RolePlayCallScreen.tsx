@@ -1,18 +1,41 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import type { RoleplayCase } from '@/types/assessment'
 
 interface Props {
   onDone: () => void
   cameraStream: MediaStream | null
   voiceProvider: 'vapi' | 'arbol'
   candidatePhone?: string
+  roleplayCase?: RoleplayCase | null
+}
+
+const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
+  restaurant_name: 'Heladería La Fiore',
+  owner_name: 'Valentina Ríos',
+  owner_gender: 'f',
+  city: 'Cali',
+  category: 'Helados',
+  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
+  ticket_avg: '$29.900',
+  orders_per_week: '~70–75',
+  inactive_time: '2+ meses',
+  strategies: [
+    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
+    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
+  ],
+  opportunities: [
+    'Los Ads solo gastan el 46% del presupuesto disponible (co-inversión Rappi 70%)',
+    'Campaña visible solo en Onces y Cena — horario ampliable',
+    'Cerrado los martes — posible día de apertura',
+    'Descuentos con 22X retorno — espacio para incrementar',
+  ],
+  sales_data: [50, 77, 61, 52, 76, 74, 74],
+  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
 }
 
 const TOTAL_SECONDS = 5 * 60
-
-const salesData   = [50, 77, 61, 52, 76, 74, 74]
-const salesLabels = ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4']
 
 function playBeep(frequency: number, duration: number, times = 1) {
   try {
@@ -34,7 +57,9 @@ function playBeep(frequency: number, duration: number, times = 1) {
 
 type CallStatus = 'connecting' | 'active' | 'ended'
 
-export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone }: Props) {
+export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone, roleplayCase }: Props) {
+  const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
+
   const [secondsLeft,  setSecondsLeft]  = useState(TOTAL_SECONDS)
   const [callDuration, setCallDuration] = useState(0)
   const [confirmEnd,   setConfirmEnd]   = useState(false)
@@ -53,6 +78,8 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
   const arbolConvIdRef = useRef<string | null>(null)
   const arbolPollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const durationRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const maxBar = Math.max(...rc.sales_data)
 
   // Attach camera stream to PiP video element
   useEffect(() => {
@@ -120,7 +147,41 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           }
         })
 
-        await vapi.start(assistantId)
+        // Build context prompt from roleplay case data
+        const ownerTitle = rc.owner_gender === 'f' ? 'dueña' : 'dueño'
+        const strategiesText = rc.strategies.map(s =>
+          `- ${s.name}: ROI ${s.roi} — ${s.status === 'active' ? 'ACTIVO' : s.status === 'underused' ? 'SUBUTILIZADO' : 'INACTIVO'}${s.note ? ` (${s.note})` : ''}`
+        ).join('\n')
+        const opportunitiesText = rc.opportunities.map(o => `- ${o}`).join('\n')
+
+        const contextPrompt = `
+INFORMACIÓN DE TU RESTAURANTE (úsala en la conversación):
+- Eres ${rc.owner_name}, ${ownerTitle} de ${rc.restaurant_name} — ${rc.category} en ${rc.city}
+- Horario: ${rc.schedule}
+
+MÉTRICAS ACTUALES:
+- Ticket promedio: ${rc.ticket_avg}
+- Pedidos por semana: ${rc.orders_per_week}
+- Tiempo sin cambios significativos: ${rc.inactive_time}
+
+ESTRATEGIAS ACTIVAS EN RAPPI:
+${strategiesText}
+
+OPORTUNIDADES QUE EL AE PODRÍA MENCIONAR:
+${opportunitiesText}
+
+INSTRUCCIONES: Cuando el AE mencione datos específicos de tu negocio, reacciona de forma realista. Si propone activar más ads, menciona que tienes presupuesto sin usar. Si habla de descuentos, confirma el ROI que ya tienes activo. Usa tu nombre (${rc.owner_name}) y el del restaurante (${rc.restaurant_name}) naturalmente en la conversación.
+`.trim()
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await vapi.start(assistantId, {
+          model: {
+            messages: [{
+              role: 'system',
+              content: contextPrompt,
+            }]
+          }
+        } as any)
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : String(e)
@@ -154,7 +215,7 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           body: JSON.stringify({
             agentId: 'rappi-ventas-restaurante',
             phone: candidatePhone,
-            variables: { restaurant: 'Heladería La Fiore', contact: 'Valentina Ríos' },
+            variables: { restaurant: rc.restaurant_name, contact: rc.owner_name },
           }),
         })
         if (!res.ok) throw new Error(`Arbol API error ${res.status}`)
@@ -251,8 +312,6 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
   const durMins = String(Math.floor(callDuration / 60)).padStart(2, '0')
   const durSecs = String(callDuration % 60).padStart(2, '0')
 
-  const maxBar = Math.max(...salesData)
-
   const callStatusLabel =
     callStatus === 'connecting' ? 'Llamando...' :
     callStatus === 'active'     ? 'En llamada'  :
@@ -262,6 +321,8 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
     callStatus === 'connecting' ? '#f59e0b' :
     callStatus === 'active'     ? '#00d68a' :
     '#ff6b6b'
+
+  const ownerTitle = rc.owner_gender === 'f' ? 'Dueña' : 'Dueño'
 
   return (
     <div style={{
@@ -401,7 +462,7 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
                 fontFamily: 'Fraunces, serif',
                 boxShadow: '0 0 0 4px rgba(245,158,11,.15)',
               }}>
-                V
+                {rc.owner_name.charAt(0).toUpperCase()}
               </div>
 
               {/* Contact name */}
@@ -410,13 +471,13 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
                   fontFamily: 'DM Sans, sans-serif', fontSize: 20,
                   fontWeight: 700, color: '#fff', lineHeight: 1.2,
                 }}>
-                  Valentina Ríos
+                  {rc.owner_name}
                 </div>
                 <div style={{
                   fontFamily: 'DM Sans, sans-serif', fontSize: 12,
                   color: 'rgba(255,255,255,.5)', marginTop: 4,
                 }}>
-                  Heladería La Fiore · Cali
+                  {rc.restaurant_name} · {rc.city}
                 </div>
               </div>
 
@@ -560,23 +621,23 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
               Información del cliente
             </div>
             <div style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 3 }}>
-              Heladería La Fiore
+              {rc.restaurant_name}
             </div>
             <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.6 }}>
-              Dueña · <strong style={{ color: 'var(--text)' }}>Valentina Ríos</strong>
+              {ownerTitle} · <strong style={{ color: 'var(--text)' }}>{rc.owner_name}</strong>
             </div>
             <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-              Helados · Cali, Colombia &nbsp;|&nbsp; Mié–Lun · 3:00 pm – 9:30 pm
+              {rc.category} · {rc.city}, Colombia &nbsp;|&nbsp; {rc.schedule}
             </div>
           </div>
 
           {/* Stats 2x2 */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[
-              { value: '$29.900',  label: 'Ticket prom.'  },
-              { value: '~70–75',   label: 'Pedidos/sem'   },
-              { value: '2+ meses', label: 'Sin cambios'   },
-              { value: 'Cali',     label: 'Colombia'      },
+              { value: rc.ticket_avg,       label: 'Ticket prom.'  },
+              { value: rc.orders_per_week,  label: 'Pedidos/sem'   },
+              { value: rc.inactive_time,    label: 'Sin cambios'   },
+              { value: rc.city,             label: 'Colombia'      },
             ].map((stat, i) => (
               <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
                 <div style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
@@ -594,20 +655,23 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10 }}>
               Estrategias activas
             </div>
-            {[
-              { name: 'Descuentos 5% + PRO', roi: 'ROI: 22X', badge: '✅ ACTIVO',        badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)' },
-              { name: 'Ads $1.000.000/sem',  roi: 'ROI: 3.9X', badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b'      },
-            ].map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i === 0 ? '1px solid var(--border)' : 'none', gap: 8 }}>
-                <div>
-                  <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{s.name}</div>
-                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{s.roi}</div>
+            {rc.strategies.map((s, i) => {
+              const badgeConfig =
+                s.status === 'active'    ? { badge: '✅ ACTIVO',        badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)' } :
+                s.status === 'underused' ? { badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b' } :
+                                           { badge: '❌ INACTIVO',       badgeColor: 'rgba(255,107,107,.15)', badgeText: '#ff6b6b' }
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < rc.strategies.length - 1 ? '1px solid var(--border)' : 'none', gap: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{s.name}</div>
+                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>ROI: {s.roi}</div>
+                  </div>
+                  <div style={{ padding: '4px 8px', borderRadius: 6, background: badgeConfig.badgeColor, color: badgeConfig.badgeText, fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>
+                    {badgeConfig.badge}
+                  </div>
                 </div>
-                <div style={{ padding: '4px 8px', borderRadius: 6, background: s.badgeColor, color: s.badgeText, fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>
-                  {s.badge}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Opportunities */}
@@ -615,13 +679,8 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#f59e0b', marginBottom: 10 }}>
               Oportunidades detectadas
             </div>
-            {[
-              'Los Ads solo gastan el 46% del presupuesto disponible (co-inversión Rappi 70%)',
-              'Campaña visible solo en Onces y Cena — horario ampliable',
-              'Cerrado los martes — posible día de apertura',
-              'Descuentos con 22X retorno — espacio para incrementar',
-            ].map((opp, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: i < 3 ? '1px solid rgba(245,158,11,.1)' : 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.55 }}>
+            {rc.opportunities.map((opp, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: i < rc.opportunities.length - 1 ? '1px solid rgba(245,158,11,.1)' : 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.55 }}>
                 <span style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }}>💡</span>
                 {opp}
               </div>
@@ -634,21 +693,21 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
               Historial de ventas — pedidos/semana
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 44 }}>
-              {salesData.map((val, i) => (
+              {rc.sales_data.map((val, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
                   <div style={{ width: '100%', height: `${Math.round((val / maxBar) * 36)}px`, background: 'rgba(245,158,11,.55)', borderRadius: '3px 3px 0 0', minHeight: 4 }} />
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              {salesLabels.map((label, i) => (
+              {rc.sales_labels.map((label, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 7.5, color: 'var(--muted)', letterSpacing: '.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {label}
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-              {salesData.map((val, i) => (
+              {rc.sales_data.map((val, i) => (
                 <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--dim)', fontWeight: 600 }}>
                   {val}
                 </div>

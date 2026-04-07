@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Cohort, CasoMode } from '@/types/assessment'
+import type { Cohort, CasoMode, RoleplayCase, RoleplayStrategy } from '@/types/assessment'
 
 type MathModeOverride = 'global' | 'questions' | 'spreadsheet'
 type VoiceProviderOverride = 'global' | 'vapi' | 'arbol'
@@ -26,6 +26,30 @@ const difficultyColor = (d: string) => {
   return '#8b5cf6'
 }
 
+const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
+  restaurant_name: 'Heladería La Fiore',
+  owner_name: 'Valentina Ríos',
+  owner_gender: 'f',
+  city: 'Cali',
+  category: 'Helados',
+  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
+  ticket_avg: '$29.900',
+  orders_per_week: '~70–75',
+  inactive_time: '2+ meses',
+  strategies: [
+    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
+    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
+  ],
+  opportunities: [
+    'Los Ads solo gastan el 46% del presupuesto disponible (co-inversión Rappi 70%)',
+    'Campaña visible solo en Onces y Cena — horario ampliable',
+    'Cerrado los martes — posible día de apertura',
+    'Descuentos con 22X retorno — espacio para incrementar',
+  ],
+  sales_data: [50, 77, 61, 52, 76, 74, 74],
+  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
+}
+
 export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSummary[] }) {
   const [name, setName]                   = useState(cohort.name)
   const [description, setDescription]     = useState(cohort.description)
@@ -43,6 +67,23 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
   const [saving, setSaving]               = useState(false)
   const [flash, setFlash]                 = useState<string | null>(null)
 
+  // ── Roleplay case state ──────────────────────────────────────────────────
+  const initial = cohort.roleplay_case ?? DEFAULT_ROLEPLAY_CASE
+  const [rpOpen,          setRpOpen]          = useState(false)
+  const [rpRestaurant,    setRpRestaurant]    = useState(initial.restaurant_name)
+  const [rpOwner,         setRpOwner]         = useState(initial.owner_name)
+  const [rpGender,        setRpGender]        = useState<'f' | 'm'>(initial.owner_gender)
+  const [rpCity,          setRpCity]          = useState(initial.city)
+  const [rpCategory,      setRpCategory]      = useState(initial.category)
+  const [rpSchedule,      setRpSchedule]      = useState(initial.schedule)
+  const [rpTicket,        setRpTicket]        = useState(initial.ticket_avg)
+  const [rpOrders,        setRpOrders]        = useState(initial.orders_per_week)
+  const [rpInactive,      setRpInactive]      = useState(initial.inactive_time)
+  const [rpStrategies,    setRpStrategies]    = useState<RoleplayStrategy[]>(initial.strategies)
+  const [rpOpportunities, setRpOpportunities] = useState<string[]>(initial.opportunities)
+  const [rpSalesData,     setRpSalesData]     = useState<string>(initial.sales_data.join(', '))
+  const [rpSalesLabels,   setRpSalesLabels]   = useState<string>(initial.sales_labels.join(', '))
+
   const toggleSection = (id: string) => {
     setSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
   }
@@ -50,6 +91,22 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
   const filteredCases = diffFilter
     ? cases.filter(c => c.difficulty === diffFilter)
     : cases
+
+  const buildRoleplayCase = (): RoleplayCase => ({
+    restaurant_name: rpRestaurant.trim(),
+    owner_name: rpOwner.trim(),
+    owner_gender: rpGender,
+    city: rpCity.trim(),
+    category: rpCategory.trim(),
+    schedule: rpSchedule.trim(),
+    ticket_avg: rpTicket.trim(),
+    orders_per_week: rpOrders.trim(),
+    inactive_time: rpInactive.trim(),
+    strategies: rpStrategies,
+    opportunities: rpOpportunities.filter(o => o.trim() !== ''),
+    sales_data: rpSalesData.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n)),
+    sales_labels: rpSalesLabels.split(',').map(s => s.trim()).filter(s => s !== ''),
+  })
 
   const handleSave = async () => {
     setSaving(true)
@@ -69,6 +126,7 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           difficulty_filter:   casoMode === 'random' ? (diffFilter || null) : null,
           math_mode_override:       mathMode === 'global'  ? null : mathMode,
           voice_provider_override:  voiceMode === 'global' ? null : voiceMode,
+          roleplay_case:       sections.includes('roleplay') ? buildRoleplayCase() : null,
         })
         .eq('id', cohort.id)
       if (error) throw error
@@ -94,6 +152,12 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
     display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
     textTransform: 'uppercase', letterSpacing: '1.2px',
     color: 'var(--muted)', marginBottom: 6, fontWeight: 500,
+  }
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
+    textTransform: 'uppercase', letterSpacing: '1.2px',
+    color: 'var(--muted)', fontWeight: 500,
   }
 
   return (
@@ -354,6 +418,193 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
             ))}
           </div>
         </div>
+
+        {/* ── Roleplay Case section ─────────────────────────────────────────── */}
+        {sections.includes('roleplay') && (
+          <>
+            <div style={{ height: 1, background: 'var(--border)' }} />
+            <div>
+              {/* Toggle header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: rpOpen ? 16 : 0 }}>
+                <span style={{ ...sectionLabelStyle, fontSize: 11, color: 'var(--text)' }}>🎭 Caso de Role Play</span>
+                <button
+                  onClick={() => setRpOpen(v => !v)}
+                  style={{
+                    background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)',
+                    borderRadius: 6, color: 'var(--muted)', fontFamily: 'JetBrains Mono, Space Mono, monospace',
+                    fontSize: 10, letterSpacing: '.5px', padding: '4px 10px', cursor: 'pointer',
+                  }}
+                >
+                  {rpOpen ? 'Ocultar ↑' : 'Configurar ↓'}
+                </button>
+              </div>
+
+              {rpOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                  {/* ── Restaurante ── */}
+                  <div style={{ ...sectionLabelStyle, marginBottom: 6 }}>Restaurante</div>
+
+                  <div>
+                    <label style={labelStyle}>Nombre del restaurante</label>
+                    <input value={rpRestaurant} onChange={e => setRpRestaurant(e.target.value)} style={inputStyle} placeholder="ej. Heladería La Fiore" />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
+                    <div>
+                      <label style={labelStyle}>Nombre del dueño/a</label>
+                      <input value={rpOwner} onChange={e => setRpOwner(e.target.value)} style={inputStyle} placeholder="ej. Valentina Ríos" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Género</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {(['f', 'm'] as const).map(g => (
+                          <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>
+                            <div
+                              onClick={() => setRpGender(g)}
+                              style={{
+                                width: 14, height: 14, borderRadius: '50%',
+                                background: rpGender === g ? 'var(--blue)' : 'var(--input)',
+                                border: `1.5px solid ${rpGender === g ? 'var(--blue)' : 'var(--border-mid)'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer', flexShrink: 0,
+                              }}
+                            >
+                              {rpGender === g && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                            </div>
+                            {g === 'f' ? 'Dueña' : 'Dueño'}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={labelStyle}>Ciudad</label>
+                      <input value={rpCity} onChange={e => setRpCity(e.target.value)} style={inputStyle} placeholder="ej. Cali" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Categoría</label>
+                      <input value={rpCategory} onChange={e => setRpCategory(e.target.value)} style={inputStyle} placeholder="ej. Helados" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Horario</label>
+                    <input value={rpSchedule} onChange={e => setRpSchedule(e.target.value)} style={inputStyle} placeholder="ej. Lun–Dom · 12:00 pm – 10:00 pm" />
+                  </div>
+
+                  {/* ── Métricas clave ── */}
+                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={sectionLabelStyle}>Métricas clave</div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={labelStyle}>Ticket promedio</label>
+                      <input value={rpTicket} onChange={e => setRpTicket(e.target.value)} style={inputStyle} placeholder="$29.900" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Pedidos/semana</label>
+                      <input value={rpOrders} onChange={e => setRpOrders(e.target.value)} style={inputStyle} placeholder="~70–75" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Tiempo sin cambios</label>
+                      <input value={rpInactive} onChange={e => setRpInactive(e.target.value)} style={inputStyle} placeholder="2+ meses" />
+                    </div>
+                  </div>
+
+                  {/* ── Estrategias ── */}
+                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={sectionLabelStyle}>Estrategias activas (máx 4)</span>
+                    {rpStrategies.length < 4 && (
+                      <button
+                        onClick={() => setRpStrategies(prev => [...prev, { name: '', roi: '', status: 'active' }])}
+                        style={{ background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--dim)', fontFamily: 'Inter, DM Sans, sans-serif', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}
+                      >
+                        + Agregar
+                      </button>
+                    )}
+                  </div>
+
+                  {rpStrategies.map((s, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr 2fr auto', gap: 8, alignItems: 'end' }}>
+                      <div>
+                        {i === 0 && <label style={labelStyle}>Nombre</label>}
+                        <input value={s.name} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={inputStyle} placeholder="Descuentos 5% + PRO" />
+                      </div>
+                      <div>
+                        {i === 0 && <label style={labelStyle}>ROI</label>}
+                        <input value={s.roi} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, roi: e.target.value } : x))} style={inputStyle} placeholder="22X" />
+                      </div>
+                      <div>
+                        {i === 0 && <label style={labelStyle}>Estado</label>}
+                        <select value={s.status} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, status: e.target.value as RoleplayStrategy['status'] } : x))} style={{ ...inputStyle, fontSize: 12 }}>
+                          <option value="active">Activo</option>
+                          <option value="underused">Subutilizado</option>
+                          <option value="inactive">Inactivo</option>
+                        </select>
+                      </div>
+                      <div>
+                        {i === 0 && <label style={labelStyle}>Nota (opcional)</label>}
+                        <input value={s.note ?? ''} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} style={inputStyle} placeholder="ej. ROI 22X activo" />
+                      </div>
+                      <button
+                        onClick={() => setRpStrategies(prev => prev.filter((_, j) => j !== i))}
+                        style={{ background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.3)', borderRadius: 6, color: '#ff6b6b', fontSize: 14, width: 32, height: 38, cursor: 'pointer', marginTop: i === 0 ? 16 : 0, flexShrink: 0 }}
+                        title="Eliminar"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* ── Oportunidades ── */}
+                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={sectionLabelStyle}>Oportunidades detectadas (máx 6)</span>
+                    {rpOpportunities.length < 6 && (
+                      <button
+                        onClick={() => setRpOpportunities(prev => [...prev, ''])}
+                        style={{ background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--dim)', fontFamily: 'Inter, DM Sans, sans-serif', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}
+                      >
+                        + Agregar
+                      </button>
+                    )}
+                  </div>
+
+                  {rpOpportunities.map((opp, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input value={opp} onChange={e => setRpOpportunities(prev => prev.map((x, j) => j === i ? e.target.value : x))} style={{ ...inputStyle, flex: 1 }} placeholder={`Oportunidad ${i + 1}`} />
+                      <button
+                        onClick={() => setRpOpportunities(prev => prev.filter((_, j) => j !== i))}
+                        style={{ background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.3)', borderRadius: 6, color: '#ff6b6b', fontSize: 14, width: 32, height: 38, cursor: 'pointer', flexShrink: 0 }}
+                        title="Eliminar"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* ── Historial de ventas ── */}
+                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={sectionLabelStyle}>Historial de ventas</div>
+
+                  <div>
+                    <label style={labelStyle}>Valores (7, separados por coma)</label>
+                    <input value={rpSalesData} onChange={e => setRpSalesData(e.target.value)} style={inputStyle} placeholder="50, 77, 61, 52, 76, 74, 74" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Etiquetas (7, separadas por coma)</label>
+                    <input value={rpSalesLabels} onChange={e => setRpSalesLabels(e.target.value)} style={inputStyle} placeholder="Oct W1, Oct W2, Oct W3, Nov W1, Nov W2, Nov W3, Nov W4" />
+                  </div>
+
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
       {/* Flash + Save */}
       <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>

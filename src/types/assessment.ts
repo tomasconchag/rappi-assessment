@@ -1,5 +1,28 @@
 import type { SectionId } from '@/lib/challenges'
 
+export type RoleplayStrategy = {
+  name: string
+  roi: string
+  status: 'active' | 'underused' | 'inactive'
+  note?: string
+}
+
+export type RoleplayCase = {
+  restaurant_name: string
+  owner_name: string
+  owner_gender: 'f' | 'm'
+  city: string
+  category: string
+  schedule: string
+  ticket_avg: string
+  orders_per_week: string
+  inactive_time: string
+  strategies: RoleplayStrategy[]
+  opportunities: string[]
+  sales_data: number[]
+  sales_labels: string[]
+}
+
 export type Screen =
   | 'welcome'
   | 'context'
@@ -99,6 +122,7 @@ export type Cohort = {
   difficulty_filter: string | null
   math_mode_override: 'questions' | 'spreadsheet' | null
   voice_provider_override: 'vapi' | 'arbol' | null
+  roleplay_case: RoleplayCase | null
   created_at: string
 }
 

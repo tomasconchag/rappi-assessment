@@ -20,7 +20,7 @@ import { MathIntroScreen } from './screens/MathIntroScreen'
 import { MathQuestionScreen } from './screens/MathQuestionScreen'
 import { MathSpreadsheetScreen } from './screens/MathSpreadsheetScreen'
 import { CompletionScreen } from './screens/CompletionScreen'
-import type { AssessmentConfig, CandidateInfo } from '@/types/assessment'
+import type { AssessmentConfig, CandidateInfo, RoleplayCase } from '@/types/assessment'
 import { scoreMath, scoreCaso, calcOverall, fraudScore, fraudLevel } from '@/lib/scoring'
 import { getSpreadsheetVersion, randomVersion, scoreMathSpreadsheet } from '@/lib/mathSpreadsheetTemplates'
 import type { SpreadsheetAnswer } from '@/lib/mathSpreadsheetTemplates'
@@ -83,6 +83,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const roleCameraStreamRef = useRef<MediaStream | null>(null)
   // Voice provider state
   const [candidatePhone, setCandidatePhone] = useState<string>('')
+  // Roleplay case (injected from cohort)
+  const [roleplayCase, setRoleplayCase] = useState<RoleplayCase | null>(null)
 
   // Spreadsheet math mode
   const spreadsheetVersion = useRef<'A' | 'B'>(
@@ -223,7 +225,9 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
             enabledSections: string[] | null
             mathModeOverride: 'questions' | 'spreadsheet' | null
             voiceProviderOverride: 'vapi' | 'arbol' | null
+            roleplayCase: RoleplayCase | null
           }
+          if (data.roleplayCase) setRoleplayCase(data.roleplayCase)
           if (data.casoBankEntry || data.enabledSections || data.mathModeOverride || data.voiceProviderOverride) {
             const bankEntry = data.casoBankEntry
             const newSections = (data.enabledSections as import('@/lib/challenges').SectionId[] | null)
@@ -727,8 +731,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       }} />
       )}
       {state.screen === 'roleplay_intro' && <RolePlayIntroScreen onStart={handleRolePlayStart} />}
-      {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} voiceProvider={liveConfig.voice_provider ?? 'vapi'} onPhoneCapture={setCandidatePhone} />}
-      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} voiceProvider={liveConfig.voice_provider ?? 'vapi'} candidatePhone={candidatePhone || undefined} />}
+      {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} voiceProvider={liveConfig.voice_provider ?? 'vapi'} onPhoneCapture={setCandidatePhone} roleplayCase={roleplayCase} />}
+      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} voiceProvider={liveConfig.voice_provider ?? 'vapi'} candidatePhone={candidatePhone || undefined} roleplayCase={roleplayCase} />}
       {state.screen === 'roleplay_done' && <RolePlayDoneScreen onNext={handleRolePlayNext} />}
       {state.screen === 'caso_intro' && (
         <CasoIntroScreen

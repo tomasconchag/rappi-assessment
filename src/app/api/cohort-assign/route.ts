@@ -95,5 +95,6 @@ export async function POST(req: NextRequest) {
     casoBankEntry,
     mathModeOverride: cohort.math_mode_override ?? null,
     voiceProviderOverride: cohort.voice_provider_override ?? null,
+    roleplayCase: cohort.roleplay_case ?? null,
   })
 }
