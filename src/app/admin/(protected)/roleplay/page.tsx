@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { VoiceProviderToggle } from '../settings/VoiceProviderToggle'
+import { RolePlayTestButton } from './RolePlayTestButton'
 
 export default async function RolePlayPage() {
   const supabase = createAdminClient()
@@ -43,8 +44,24 @@ export default async function RolePlayPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+          {/* Test call */}
+          <div style={{ ...card, borderTop: '3px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+            <div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, marginBottom: 4 }}>
+                Probar llamada
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.5, margin: 0 }}>
+                Inicia una llamada de prueba como candidato — sin crear usuarios ni pasar por el flujo completo.
+              </p>
+            </div>
+            <RolePlayTestButton
+              voiceProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
+              roleplayCase={null}
+            />
+          </div>
+
           {/* Voice Provider selector */}
-          <div style={{ ...card, borderTop: '3px solid #f59e0b' }}>
+          <div style={{ ...card, borderTop: '3px solid var(--border)' }}>
             <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 6 }}>
               Role Play · Proveedor de Voz
             </div>
