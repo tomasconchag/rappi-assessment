@@ -94,5 +94,6 @@ export async function POST(req: NextRequest) {
     enabledSections: cohort.enabled_sections ?? null,
     casoBankEntry,
     mathModeOverride: cohort.math_mode_override ?? null,
+    voiceProviderOverride: cohort.voice_provider_override ?? null,
   })
 }

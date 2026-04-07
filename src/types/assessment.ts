@@ -80,6 +80,7 @@ export type AssessmentConfig = {
   enabled_sections?: SectionId[]
   caso_bank_entry?: CasoBankEntry | null
   active_caso_id?: string | null
+  voice_provider?: 'vapi' | 'arbol'
 }
 
 export type CasoMode = 'global' | 'fixed' | 'random'
@@ -97,6 +98,7 @@ export type Cohort = {
   fixed_caso_id: string | null
   difficulty_filter: string | null
   math_mode_override: 'questions' | 'spreadsheet' | null
+  voice_provider_override: 'vapi' | 'arbol' | null
   created_at: string
 }
 

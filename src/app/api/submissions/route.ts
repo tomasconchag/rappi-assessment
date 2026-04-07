@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
     const videoPath    = b.videoPath    as string | null
     const videoMimeType = b.videoMimeType as string
     const videoRecorded = b.videoRecorded as boolean
-    const roleplayCompleted = b.roleplayCompleted as boolean
-    const roleplayVideoPath = b.roleplayVideoPath as string | null
+    const roleplayCompleted  = b.roleplayCompleted as boolean
+    const roleplayVideoPath  = b.roleplayVideoPath as string | null
+    const roleplayTranscript = b.roleplayTranscript as string | undefined
     const mathScoreRaw  = b.mathScoreRaw  as number
     const mathScoreTotal = b.mathScoreTotal as number
     const mathScorePct  = b.mathScorePct  as number
@@ -155,6 +156,7 @@ export async function POST(req: NextRequest) {
         video_recorded: videoRecorded as boolean ?? false,
         roleplay_completed: roleplayCompleted as boolean ?? false,
         roleplay_video_path: roleplayVideoPath as string ?? null,
+        ...(roleplayTranscript ? { roleplay_transcript: roleplayTranscript } : {}),
         enabled_sections: enabledSections,
         challenge_weights: challengeWeights,
         math_score_raw: mathScoreRaw as number ?? 0,
@@ -254,8 +256,8 @@ export async function POST(req: NextRequest) {
         })
       } catch (err) { console.error('Auto caso eval error:', err) }
     })
-    // RolePlay: only if completed and video uploaded
-    if (roleplayCompleted && roleplayVideoPath) {
+    // RolePlay: if completed and either video uploaded or transcript provided
+    if (roleplayCompleted && (roleplayVideoPath || roleplayTranscript)) {
       after(async () => {
         try {
           await fetch(`${evalBase}/api/evaluate-roleplay`, {

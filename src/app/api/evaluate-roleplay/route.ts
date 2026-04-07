@@ -112,20 +112,24 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (subErr || !sub) return Response.json({ error: 'Submission no encontrada' }, { status: 404 })
-    if (!sub.roleplay_video_path) return Response.json({ error: 'No hay grabación de roleplay para este candidato' }, { status: 400 })
 
-    // Get signed URL for the video
-    const { data: urlData } = await supabase.storage
-      .from('assessment-videos')
-      .createSignedUrl(sub.roleplay_video_path, 3600)
-    if (!urlData?.signedUrl) return Response.json({ error: 'No se pudo obtener la URL del video' }, { status: 500 })
-
-    // Transcribe (reuse existing transcript if available)
+    // If transcript already set (from Vapi/Arbol), skip AssemblyAI
     let transcript = sub.roleplay_transcript || ''
     if (!transcript) {
+      // Need video to transcribe via AssemblyAI
+      if (!sub.roleplay_video_path) return Response.json({ error: 'No hay grabación ni transcripción de roleplay para este candidato' }, { status: 400 })
+
+      // Get signed URL for the video
+      const { data: urlData } = await supabase.storage
+        .from('assessment-videos')
+        .createSignedUrl(sub.roleplay_video_path, 3600)
+      if (!urlData?.signedUrl) return Response.json({ error: 'No se pudo obtener la URL del video' }, { status: 500 })
+
       console.log('[evaluate-roleplay] transcribing via AssemblyAI...')
       transcript = await transcribeWithAssemblyAI(urlData.signedUrl)
       if (!transcript) return Response.json({ error: 'La transcripción está vacía' }, { status: 422 })
+    } else {
+      console.log('[evaluate-roleplay] using existing transcript (Vapi/Arbol)')
     }
 
     // Evaluate with Claude

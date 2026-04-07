@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cohort, CasoMode } from '@/types/assessment'
 
 type MathModeOverride = 'global' | 'questions' | 'spreadsheet'
+type VoiceProviderOverride = 'global' | 'vapi' | 'arbol'
 
 type CaseSummary = { id: string; title: string; difficulty: string }
 
@@ -38,6 +39,7 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
   const [fixedCasoId, setFixedCasoId]     = useState<string>(cohort.fixed_caso_id ?? '')
   const [diffFilter, setDiffFilter]       = useState<string>(cohort.difficulty_filter ?? '')
   const [mathMode, setMathMode]           = useState<MathModeOverride>(cohort.math_mode_override ?? 'global')
+  const [voiceMode, setVoiceMode]         = useState<VoiceProviderOverride>(cohort.voice_provider_override ?? 'global')
   const [saving, setSaving]               = useState(false)
   const [flash, setFlash]                 = useState<string | null>(null)
 
@@ -65,7 +67,8 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           caso_mode:           casoMode,
           fixed_caso_id:       casoMode === 'fixed' ? (fixedCasoId || null) : null,
           difficulty_filter:   casoMode === 'random' ? (diffFilter || null) : null,
-          math_mode_override:  mathMode === 'global' ? null : mathMode,
+          math_mode_override:       mathMode === 'global'  ? null : mathMode,
+          voice_provider_override:  voiceMode === 'global' ? null : voiceMode,
         })
         .eq('id', cohort.id)
       if (error) throw error
@@ -312,6 +315,45 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
             </div>
           </div>
         )}
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--border)' }} />
+
+        {/* Voice Provider */}
+        <div>
+          <label style={labelStyle}>Proveedor de Voz</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {([
+              { value: 'global', label: 'Usar config global',   desc: 'Lo que esté configurado en Settings' },
+              { value: 'vapi',   label: 'Vapi (browser)',       desc: 'Llamada en el navegador vía WebRTC' },
+              { value: 'arbol',  label: 'Arbol AI (llamada real)', desc: 'Llamada telefónica al candidato' },
+            ] as { value: VoiceProviderOverride; label: string; desc: string }[]).map(opt => (
+              <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <div
+                  onClick={() => setVoiceMode(opt.value)}
+                  style={{
+                    marginTop: 2,
+                    width: 16, height: 16, borderRadius: '50%',
+                    background: voiceMode === opt.value ? 'var(--blue)' : 'var(--input)',
+                    border: `1.5px solid ${voiceMode === opt.value ? 'var(--blue)' : 'var(--border-mid)'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+                  }}
+                >
+                  {voiceMode === opt.value && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12.5, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>
+                    {opt.label}
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--muted)', marginTop: 1 }}>
+                    {opt.desc}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
 
       {/* Flash + Save */}
       <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>

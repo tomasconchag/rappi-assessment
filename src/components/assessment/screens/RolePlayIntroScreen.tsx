@@ -5,7 +5,7 @@ interface Props {
 }
 
 const whatItems = [
-  'Vas a hablar con un avatar de IA que simula ser la dueña del restaurante',
+  'Vas a tener una llamada de voz con IA que simula ser la dueña del restaurante',
   'En pantalla tendrás acceso a todos los datos del restaurante (ventas, estrategias activas, oportunidades)',
   'Tu misión: identificar los problemas y proponer soluciones concretas con herramientas Rappi',
 ]

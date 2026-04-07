@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 interface Props {
   onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null) => void
+  voiceProvider?: 'vapi' | 'arbol'
+  onPhoneCapture?: (phone: string) => void
 }
 
 const PREP_SECONDS = 5 * 60
@@ -30,11 +32,12 @@ function playBeep(frequency: number, duration: number, times = 1) {
   } catch { /* ignore */ }
 }
 
-export function RolePlayPrepScreen({ onReady }: Props) {
+export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture }: Props) {
   const [secondsLeft, setSecondsLeft] = useState(PREP_SECONDS)
   const [recStatus,   setRecStatus]   = useState<'idle' | 'requesting' | 'recording' | 'error'>('idle')
   const [recError,    setRecError]    = useState('')
   const [hasCamPip,   setHasCamPip]   = useState(false)
+  const [phoneNumber, setPhoneNumber] = useState('+57')
 
   const recorderRef    = useRef<MediaRecorder | null>(null)
   const chunksRef      = useRef<Blob[]>([])
@@ -174,11 +177,15 @@ export function RolePlayPrepScreen({ onReady }: Props) {
 
   const handleReady = useCallback(() => {
     if (!recorderRef.current || expiredRef.current || recStatus !== 'recording') return
+    if (voiceProvider === 'arbol' && phoneNumber.trim().length < 8) return
     expiredRef.current = true
+    if (voiceProvider === 'arbol' && onPhoneCapture) {
+      onPhoneCapture(phoneNumber.trim())
+    }
     const cam = cameraStreamRef.current
     cameraStreamRef.current = null // hand off ownership to parent
     onReady(recorderRef.current, chunksRef.current, mimeRef.current, cam)
-  }, [onReady, recStatus])
+  }, [onReady, recStatus, voiceProvider, phoneNumber, onPhoneCapture])
 
   const mins  = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
   const secs  = String(secondsLeft % 60).padStart(2, '0')
@@ -368,16 +375,44 @@ export function RolePlayPrepScreen({ onReady }: Props) {
           </button>
         )}
 
+        {recStatus === 'recording' && voiceProvider === 'arbol' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{
+              fontFamily: 'Space Mono, monospace', fontSize: 10,
+              textTransform: 'uppercase', letterSpacing: '1px',
+              color: 'var(--muted)', whiteSpace: 'nowrap',
+            }}>
+              Tu número:
+            </label>
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={e => setPhoneNumber(e.target.value)}
+              placeholder="+57 300 000 0000"
+              style={{
+                padding: '8px 12px', borderRadius: 8,
+                background: 'var(--input, rgba(255,255,255,.05))',
+                border: '1px solid var(--border)',
+                color: 'var(--text)', fontFamily: 'Space Mono, monospace',
+                fontSize: 12, outline: 'none', width: 160,
+              }}
+            />
+          </div>
+        )}
+
         {recStatus === 'recording' && (
           <button
             onClick={handleReady}
+            disabled={voiceProvider === 'arbol' && phoneNumber.trim().length < 8}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '10px 22px', borderRadius: 9,
               background: 'linear-gradient(140deg, #f59e0b 0%, #d97706 100%)',
               color: '#fff', fontFamily: 'DM Sans, sans-serif',
               fontSize: 13, fontWeight: 700, letterSpacing: '.3px',
-              border: 'none', cursor: 'pointer',
+              border: 'none',
+              cursor: (voiceProvider === 'arbol' && phoneNumber.trim().length < 8) ? 'not-allowed' : 'pointer',
+              opacity: (voiceProvider === 'arbol' && phoneNumber.trim().length < 8) ? 0.5 : 1,
               boxShadow: '0 4px 16px rgba(245,158,11,.35)',
               whiteSpace: 'nowrap',
             }}
