@@ -140,9 +140,18 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
         })
 
         vapi.on('error', (e: unknown) => {
+          console.error('[Vapi] error event:', e)
           if (!cancelled) {
-            const msg = e instanceof Error ? e.message : String(e)
-            setCallError(`Vapi error: ${msg}`)
+            let msg = 'Error desconocido'
+            if (e instanceof Error) {
+              msg = e.message
+            } else if (e && typeof e === 'object') {
+              const obj = e as Record<string, unknown>
+              msg = String(obj.message ?? obj.error ?? obj.errorMsg ?? obj.type ?? JSON.stringify(e))
+            } else if (typeof e === 'string') {
+              msg = e
+            }
+            setCallError(`Vapi: ${msg}`)
             setCallStatus('ended')
           }
         })
