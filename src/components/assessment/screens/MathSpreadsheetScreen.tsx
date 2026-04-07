@@ -586,18 +586,21 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
 
                     // Background
                     let bg = def?.bg ?? 'transparent'
-                    if (isAnswer && !isActive) bg = hasValue ? 'rgba(124,58,237,.12)' : 'rgba(124,58,237,.06)'
-                    if (isActive) bg = isAnswer ? '#2a1040' : '#1a1a32'
+                    if (isAnswer && !isActive) bg = hasValue ? 'rgba(34,197,94,.15)' : 'rgba(251,191,36,.15)'
+                    if (isActive) bg = isAnswer ? '#1a2d1a' : '#1a1a32'
                     if (isHovered) bg = 'rgba(59,130,246,.15)'
 
-                    // Outline
+                    // Outline / border accent
                     let outline = 'none'
-                    if (isActive && !inPointMode) outline = `2px solid ${isAnswer ? '#7c3aed' : '#3b3b6a'}`
+                    if (isAnswer && !isActive && !isHovered) outline = hasValue
+                      ? '1px solid rgba(34,197,94,.45)'
+                      : '1px solid rgba(251,191,36,.5)'
+                    if (isActive && !inPointMode) outline = `2px solid ${isAnswer ? '#22c55e' : '#3b3b6a'}`
                     if (refHex)  outline = `2px solid ${refHex}`
                     if (isHovered) outline = '2px solid #60a5fa'
 
                     const textColor = isAnswer
-                      ? (hasValue ? '#c084fc' : '#6b3db5')
+                      ? (hasValue ? '#86efac' : '#fcd34d')
                       : (def?.color ?? '#555577')
 
                     return (
@@ -637,11 +640,11 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                             }}
                             style={{
                               position: 'absolute', inset: 0,
-                              background: '#1a0a3a',
+                              background: '#0f2318',
                               border: 'none', outline: 'none',
                               padding: '0 6px',
                               fontSize: 12, fontFamily: 'JetBrains Mono, monospace',
-                              color: isFormulaInput(formulaVal) ? '#86efac' : '#c084fc',
+                              color: isFormulaInput(formulaVal) ? '#86efac' : '#fde68a',
                               width: '100%', zIndex: 10,
                             }}
                           />
@@ -656,13 +659,13 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                             fontWeight: def?.bold ? 700 : 400,
                             fontStyle: def?.italic ? 'italic' : 'normal',
                             textAlign: (def?.align ?? 'left') as 'left' | 'center' | 'right',
-                            color: refHex ?? (hasValue && isAnswer ? '#c084fc' : textColor),
+                            color: refHex ?? textColor,
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             lineHeight: `${ROW_HEIGHT}px`,
                           }}>
                             {display || (isAnswer && (
-                              <span style={{ color: '#4a2a80', fontSize: 10, fontStyle: 'italic' }}>
-                                clic para editar
+                              <span style={{ color: '#fbbf24', fontSize: 10, fontWeight: 600, letterSpacing: '0.3px' }}>
+                                ✏️ respuesta
                               </span>
                             ))}
                           </span>
