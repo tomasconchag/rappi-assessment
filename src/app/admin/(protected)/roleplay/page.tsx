@@ -55,6 +55,9 @@ export default async function RolePlayPage() {
           {/* Test panel — call button + case editor */}
           <RolePlayTestPanel
             voiceProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
+            activeBankCase={(roleplayCases as RoleplayBankEntry[])?.find(
+              c => c.id === (configData as { active_roleplay_case_id?: string | null }).active_roleplay_case_id
+            ) ?? null}
           />
 
           {/* Voice Provider selector */}

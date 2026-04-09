@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { RolePlayCallScreen } from '@/components/assessment/screens/RolePlayCallScreen'
-import type { RoleplayCase, RoleplayStrategy } from '@/types/assessment'
+import type { RoleplayCase, RoleplayStrategy, RoleplayBankEntry } from '@/types/assessment'
 
 const DEFAULT_CASE: RoleplayCase = {
   restaurant_name: 'Heladería La Fiore',
@@ -30,9 +30,10 @@ const DEFAULT_CASE: RoleplayCase = {
 
 interface Props {
   voiceProvider: 'vapi' | 'arbol'
+  activeBankCase?: RoleplayBankEntry | null
 }
 
-export function RolePlayTestPanel({ voiceProvider }: Props) {
+export function RolePlayTestPanel({ voiceProvider, activeBankCase }: Props) {
   const [testing,  setTesting]  = useState(false)
   const [caseOpen, setCaseOpen] = useState(false)
 
@@ -93,7 +94,8 @@ export function RolePlayTestPanel({ voiceProvider }: Props) {
         onDone={() => setTesting(false)}
         cameraStream={null}
         voiceProvider={voiceProvider}
-        roleplayCase={buildCase()}
+        roleplayCase={activeBankCase ? null : buildCase()}
+        roleplayBankCase={activeBankCase ?? null}
       />
     )
   }
