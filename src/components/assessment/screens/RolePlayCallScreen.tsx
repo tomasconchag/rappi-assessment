@@ -61,6 +61,12 @@ type CallStatus = 'connecting' | 'active' | 'ended'
 export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone, roleplayCase, roleplayBankCase }: Props) {
   const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
 
+  // Display names — prefer bank case when available
+  const displayName       = roleplayBankCase?.owner_name       ?? rc.owner_name
+  const displayRestaurant = roleplayBankCase?.restaurant_name  ?? rc.restaurant_name
+  const displayCity       = roleplayBankCase?.city             ?? rc.city
+  const displayCategory   = roleplayBankCase?.category         ?? rc.category
+
   const [secondsLeft,  setSecondsLeft]  = useState(TOTAL_SECONDS)
   const [callDuration, setCallDuration] = useState(0)
   const [confirmEnd,   setConfirmEnd]   = useState(false)
@@ -344,7 +350,8 @@ ${opportunitiesText}`.trim()
     callStatus === 'active'     ? '#00d68a' :
     '#ff6b6b'
 
-  const ownerTitle = rc.owner_gender === 'f' ? 'Dueña' : 'Dueño'
+  const ownerGender = roleplayBankCase?.owner_gender ?? rc.owner_gender
+  const ownerTitle = ownerGender === 'f' ? 'Dueña' : 'Dueño'
 
   return (
     <div style={{
@@ -484,7 +491,7 @@ ${opportunitiesText}`.trim()
                 fontFamily: 'Fraunces, serif',
                 boxShadow: '0 0 0 4px rgba(245,158,11,.15)',
               }}>
-                {rc.owner_name.charAt(0).toUpperCase()}
+                {displayName.charAt(0).toUpperCase()}
               </div>
 
               {/* Contact name */}
@@ -493,13 +500,13 @@ ${opportunitiesText}`.trim()
                   fontFamily: 'DM Sans, sans-serif', fontSize: 20,
                   fontWeight: 700, color: '#fff', lineHeight: 1.2,
                 }}>
-                  {rc.owner_name}
+                  {displayName}
                 </div>
                 <div style={{
                   fontFamily: 'DM Sans, sans-serif', fontSize: 12,
                   color: 'rgba(255,255,255,.5)', marginTop: 4,
                 }}>
-                  {rc.restaurant_name} · {rc.city}
+                  {displayRestaurant} · {displayCity}
                 </div>
               </div>
 
@@ -634,7 +641,7 @@ ${opportunitiesText}`.trim()
           display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0,
         }}>
 
-          {/* Client header */}
+          {/* Client header — always shown */}
           <div style={{
             background: 'var(--card)', border: '1px solid var(--border)',
             borderRadius: 10, padding: '16px 18px',
@@ -643,99 +650,118 @@ ${opportunitiesText}`.trim()
               Información del cliente
             </div>
             <div style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 3 }}>
-              {rc.restaurant_name}
+              {displayRestaurant}
             </div>
             <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.6 }}>
-              {ownerTitle} · <strong style={{ color: 'var(--text)' }}>{rc.owner_name}</strong>
+              {ownerTitle} · <strong style={{ color: 'var(--text)' }}>{displayName}</strong>
             </div>
             <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-              {rc.category} · {rc.city}, Colombia &nbsp;|&nbsp; {rc.schedule}
+              {displayCategory} · {displayCity}, Colombia
+              {!roleplayBankCase && ` \u00a0|\u00a0 ${rc.schedule}`}
+              {roleplayBankCase && ` \u00a0|\u00a0 Dificultad: ${roleplayBankCase.difficulty}`}
             </div>
           </div>
 
-          {/* Stats 2x2 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { value: rc.ticket_avg,       label: 'Ticket prom.'  },
-              { value: rc.orders_per_week,  label: 'Pedidos/sem'   },
-              { value: rc.inactive_time,    label: 'Sin cambios'   },
-              { value: rc.city,             label: 'Colombia'      },
-            ].map((stat, i) => (
-              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
-                  {stat.value}
+          {/* Bank case: show farmer briefing */}
+          {roleplayBankCase && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', flex: 1 }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>
+                📋 Tu briefing
+              </div>
+              <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--text)', lineHeight: 1.8, whiteSpace: 'pre-line' }}>
+                {roleplayBankCase.farmer_briefing}
+              </div>
+            </div>
+          )}
+
+          {/* Legacy: stats + strategies + opportunities + sales */}
+          {!roleplayBankCase && (
+            <>
+              {/* Stats 2x2 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  { value: rc.ticket_avg,       label: 'Ticket prom.'  },
+                  { value: rc.orders_per_week,  label: 'Pedidos/sem'   },
+                  { value: rc.inactive_time,    label: 'Sin cambios'   },
+                  { value: rc.city,             label: 'Colombia'      },
+                ].map((stat, i) => (
+                  <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', lineHeight: 1.1, marginBottom: 4 }}>
+                      {stat.value}
+                    </div>
+                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Active strategies */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10 }}>
+                  Estrategias activas
                 </div>
-                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>
-                  {stat.label}
+                {rc.strategies.map((s, i) => {
+                  const badgeConfig =
+                    s.status === 'active'    ? { badge: '✅ ACTIVO',        badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)' } :
+                    s.status === 'underused' ? { badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b' } :
+                                               { badge: '❌ INACTIVO',       badgeColor: 'rgba(255,107,107,.15)', badgeText: '#ff6b6b' }
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < rc.strategies.length - 1 ? '1px solid var(--border)' : 'none', gap: 8 }}>
+                      <div>
+                        <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{s.name}</div>
+                        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>ROI: {s.roi}</div>
+                      </div>
+                      <div style={{ padding: '4px 8px', borderRadius: 6, background: badgeConfig.badgeColor, color: badgeConfig.badgeText, fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>
+                        {badgeConfig.badge}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Opportunities */}
+              <div style={{ background: 'rgba(245,158,11,.04)', border: '1px solid rgba(245,158,11,.2)', borderLeft: '3px solid #f59e0b', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#f59e0b', marginBottom: 10 }}>
+                  Oportunidades detectadas
+                </div>
+                {rc.opportunities.map((opp, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: i < rc.opportunities.length - 1 ? '1px solid rgba(245,158,11,.1)' : 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.55 }}>
+                    <span style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }}>💡</span>
+                    {opp}
+                  </div>
+                ))}
+              </div>
+
+              {/* Sales history */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>
+                  Historial de ventas — pedidos/semana
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 44 }}>
+                  {rc.sales_data.map((val, i) => (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
+                      <div style={{ width: '100%', height: `${Math.round((val / maxBar) * 36)}px`, background: 'rgba(245,158,11,.55)', borderRadius: '3px 3px 0 0', minHeight: 4 }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                  {rc.sales_labels.map((label, i) => (
+                    <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 7.5, color: 'var(--muted)', letterSpacing: '.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                  {rc.sales_data.map((val, i) => (
+                    <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--dim)', fontWeight: 600 }}>
+                      {val}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* Active strategies */}
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10 }}>
-              Estrategias activas
-            </div>
-            {rc.strategies.map((s, i) => {
-              const badgeConfig =
-                s.status === 'active'    ? { badge: '✅ ACTIVO',        badgeColor: 'rgba(0,214,138,.15)', badgeText: 'var(--green)' } :
-                s.status === 'underused' ? { badge: '⚠️ SUBUTILIZADO', badgeColor: 'rgba(245,158,11,.15)', badgeText: '#f59e0b' } :
-                                           { badge: '❌ INACTIVO',       badgeColor: 'rgba(255,107,107,.15)', badgeText: '#ff6b6b' }
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < rc.strategies.length - 1 ? '1px solid var(--border)' : 'none', gap: 8 }}>
-                  <div>
-                    <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{s.name}</div>
-                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>ROI: {s.roi}</div>
-                  </div>
-                  <div style={{ padding: '4px 8px', borderRadius: 6, background: badgeConfig.badgeColor, color: badgeConfig.badgeText, fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700, letterSpacing: '.5px', flexShrink: 0 }}>
-                    {badgeConfig.badge}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Opportunities */}
-          <div style={{ background: 'rgba(245,158,11,.04)', border: '1px solid rgba(245,158,11,.2)', borderLeft: '3px solid #f59e0b', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: '#f59e0b', marginBottom: 10 }}>
-              Oportunidades detectadas
-            </div>
-            {rc.opportunities.map((opp, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: i < rc.opportunities.length - 1 ? '1px solid rgba(245,158,11,.1)' : 'none', fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, color: 'var(--dim)', lineHeight: 1.55 }}>
-                <span style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }}>💡</span>
-                {opp}
-              </div>
-            ))}
-          </div>
-
-          {/* Sales history */}
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>
-              Historial de ventas — pedidos/semana
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 44 }}>
-              {rc.sales_data.map((val, i) => (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
-                  <div style={{ width: '100%', height: `${Math.round((val / maxBar) * 36)}px`, background: 'rgba(245,158,11,.55)', borderRadius: '3px 3px 0 0', minHeight: 4 }} />
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-              {rc.sales_labels.map((label, i) => (
-                <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 7.5, color: 'var(--muted)', letterSpacing: '.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {label}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-              {rc.sales_data.map((val, i) => (
-                <div key={i} style={{ flex: 1, textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--dim)', fontWeight: 600 }}>
-                  {val}
-                </div>
-              ))}
-            </div>
-          </div>
+            </>
+          )}
 
         </div>
       </div>
