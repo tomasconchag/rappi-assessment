@@ -41,7 +41,7 @@ export function MathIntroScreen({ onStart, mathContext, isSpreadsheet }: Props) 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
               { icon: '📊', text: 'Verás los datos del restaurante en celdas pre-llenadas (bloqueadas).' },
-              { icon: '✏️', text: 'Las celdas de color azul son tuyas — haz clic y escribe tu fórmula.' },
+              { icon: '✏️', text: 'Las celdas amarillas son tuyas — haz clic y escribe tu fórmula o valor.' },
               { icon: '⌨️', text: 'Usa referencias de celda reales: =F3*4, =F4*(1-20%), =SUM(H30:H34)' },
               { icon: '✅', text: 'El sistema evalúa el resultado de tu fórmula automáticamente.' },
             ].map((tip, i) => (

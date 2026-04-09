@@ -7,7 +7,7 @@ import type { SpreadsheetVersion, SpreadsheetAnswer, CellDef } from '@/lib/mathS
 
 interface Props {
   template: SpreadsheetVersion
-  onDone: (answers: SpreadsheetAnswer[]) => void
+  onDone: (answers: SpreadsheetAnswer[], secsLeft: number) => void
 }
 
 const TIMER_SECONDS = 10 * 60  // 10 minutes
@@ -110,9 +110,10 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
 
   // When editMode=true we keep focus inside the cell via inlineCellRef,
   // or inside the formula bar via formulaBarRef. Both sync formulaVal.
-  const inlineCellRef  = useRef<HTMLInputElement>(null)
-  const formulaBarRef  = useRef<HTMLInputElement>(null)
-  const gridRef        = useRef<HTMLDivElement>(null)
+  const inlineCellRef    = useRef<HTMLInputElement>(null)
+  const formulaBarRef    = useRef<HTMLInputElement>(null)
+  const gridRef          = useRef<HTMLDivElement>(null)
+  const isCommittingRef  = useRef(false)   // prevents double-commit from onBlur after Enter
 
   const answerKeys = new Set(template.answerCells.map(a => cellKey(a.r, a.c)))
 
@@ -142,24 +143,28 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
     if (!s.startsWith('=')) return raw
     try {
       let expr = s.slice(1).toUpperCase()
+      // ── Step 1: expand SUM(A1:B5) BEFORE individual cell refs are replaced ──
+      // If we replaced refs first, "H30" → "150" and SUM would receive "SUM(150:200)"
+      // which can't be parsed as a range.
+      expr = expr.replace(/SUM\(([A-J]\d+):([A-J]\d+)\)/g, (_, sRef, eRef) => {
+        const sc = COLS.indexOf(sRef[0]), sr = parseInt(sRef.slice(1)) - 1
+        const ec = COLS.indexOf(eRef[0]), er = parseInt(eRef.slice(1)) - 1
+        let sum = 0
+        for (let row = sr; row <= er; row++)
+          for (let col = sc; col <= ec; col++) {
+            const uv = values.get(cellKey(row, col))
+            const raw = uv && uv !== '' && !isFormulaInput(uv) ? uv : String(cellMap.current.get(cellKey(row, col))?.v ?? 0)
+            const n = parseFloat(raw.replace(/\./g, '').replace(/,/g, '.'))
+            if (!isNaN(n)) sum += n
+          }
+        return String(sum)
+      })
+      // ── Step 2: replace remaining individual cell refs (A1, B3, etc.) ────
       expr = expr.replace(/([A-J])(\d+)/g, (_m, col, row) => {
         const c = COLS.indexOf(col), r = parseInt(row) - 1
         const uv = values.get(cellKey(r, c))
         if (uv && uv !== '') return isFormulaInput(uv) ? '0' : uv
         return String(cellMap.current.get(cellKey(r, c))?.v ?? 0)
-      })
-      expr = expr.replace(/SUM\(([^)]+)\)/gi, (_, range) => {
-        const [sR, eR] = range.split(':')
-        if (!eR) return '0'
-        const sc = COLS.indexOf(sR[0]), sr = parseInt(sR.slice(1)) - 1
-        const ec = COLS.indexOf(eR[0]), er = parseInt(eR.slice(1)) - 1
-        let sum = 0
-        for (let row = sr; row <= er; row++)
-          for (let col = sc; col <= ec; col++) {
-            const v = parseFloat(cellMap.current.get(cellKey(row, col))?.v?.toString() ?? '0')
-            if (!isNaN(v)) sum += v
-          }
-        return String(sum)
       })
       expr = expr.replace(/(\d+(?:\.\d+)?)%/g, (_, n) => String(Number(n) / 100))
       // eslint-disable-next-line no-new-func
@@ -185,8 +190,10 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
   // ── Commit whatever is in formulaVal into the active cell ──────────────
   const commit = useCallback((moveDir?: 'down' | 'right') => {
     if (!active) return
+    isCommittingRef.current = true
     const val = formulaVal.trim()
     setValues(prev => { const m = new Map(prev); m.set(cellKey(active.r, active.c), val); return m })
+    setTimeout(() => { isCommittingRef.current = false }, 0)
     setEditMode(false)
     setPointHover(null)
     setArrowNavCell(null)
@@ -289,9 +296,11 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
     const { r, c } = active
 
     if (editMode) {
-      // In edit mode the inline input captures keys; grid keys only reach here
-      // if somehow focus is on the grid itself
+      // Inline input has focus — only intercept Escape; all other keys (including
+      // Backspace) must be handled by the input, not the grid, to avoid clearing
+      // the entire cell when the user only wants to delete one character.
       if (e.key === 'Escape') { e.preventDefault(); cancel(); return }
+      return
     }
 
     switch (e.key) {
@@ -361,8 +370,8 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
       }
       return { r: ac.r, c: ac.c, value }
     })
-    onDone(answers)
-  }, [active, editMode, formulaVal, template.answerCells, evaluate, onDone])
+    onDone(answers, secsLeft)
+  }, [active, editMode, formulaVal, template.answerCells, evaluate, onDone, secsLeft])
 
   // Keep ref in sync so the timer can call it
   useEffect(() => { handleSubmitRef.current = handleSubmit }, [handleSubmit])
@@ -444,7 +453,7 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
         </div>
 
         <p style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 8, fontFamily: 'Inter, DM Sans, sans-serif', lineHeight: 1.6 }}>
-          Haz clic en una celda <span style={{ color: '#c084fc', fontWeight: 600 }}>morada</span> y escribe tu fórmula directamente (ej:{' '}
+          Haz clic en una celda <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarilla</span> y escribe tu fórmula directamente (ej:{' '}
           <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>=F3*4</code>,{' '}
           <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>=SUM(H30:H34)</code>).
           {' '}Respuestas: <strong style={{ color: answeredCount === totalQ ? 'var(--green)' : 'var(--text)' }}>{answeredCount}/{totalQ}</strong>
@@ -496,7 +505,7 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
           onKeyDown={handleEditKey}
           onFocus={() => { if (active && activeIsAns) { setEditMode(true) } }}
           onClick={() => { if (active && activeIsAns && !editMode) enterEdit(active.r, active.c, undefined, true) }}
-          placeholder={activeIsAns ? 'Barra de fórmulas — escribe aquí o directamente en la celda' : 'Selecciona una celda morada'}
+          placeholder={activeIsAns ? 'Barra de fórmulas — escribe aquí o directamente en la celda' : 'Selecciona una celda amarilla'}
           style={{
             flex: 1, background: 'transparent', border: 'none', outline: 'none',
             padding: '5px 12px', fontSize: 13, fontFamily: 'JetBrains Mono, monospace',
@@ -603,6 +612,8 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                       ? (hasValue ? '#86efac' : '#fcd34d')
                       : (def?.color ?? '#555577')
 
+                    const isTall = !!def?.tall  // question-label cells — allowed to grow in height
+
                     return (
                       <td
                         key={c}
@@ -614,7 +625,9 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                           background: bg,
                           borderRight: '1px solid #1a1a2e', borderBottom: '1px solid #1a1a2e',
                           outline, outlineOffset: -2,
-                          height: ROW_HEIGHT, maxWidth: COL_WIDTHS[c],
+                          height: isTall ? 'auto' : ROW_HEIGHT,
+                          minHeight: isTall ? ROW_HEIGHT : undefined,
+                          maxWidth: COL_WIDTHS[c],
                           overflow: 'hidden', verticalAlign: 'middle',
                           cursor: inPointMode ? 'crosshair' : isAnswer ? 'cell' : 'default',
                           position: 'relative',
@@ -628,6 +641,8 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                             onChange={e => setFormulaVal(e.target.value)}
                             onKeyDown={handleEditKey}
                             onBlur={e => {
+                              // Skip if already committing (e.g. Enter key triggered commit first)
+                              if (isCommittingRef.current) return
                               // Only commit if focus moved outside both inputs
                               const next = e.relatedTarget as HTMLElement | null
                               if (
@@ -653,15 +668,19 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
                         {/* ── Static display span ─────────────────────────────────────────── */}
                         {!isEditing && (
                           <span style={{
-                            display: 'block', padding: '0 6px',
-                            fontSize: 11,
+                            display: 'block',
+                            padding: isTall ? '5px 8px' : '0 6px',
+                            fontSize: isTall ? 12 : 11,
                             fontFamily: isAnswer ? 'JetBrains Mono, monospace' : 'Inter, DM Sans, sans-serif',
                             fontWeight: def?.bold ? 700 : 400,
                             fontStyle: def?.italic ? 'italic' : 'normal',
                             textAlign: (def?.align ?? 'left') as 'left' | 'center' | 'right',
                             color: refHex ?? textColor,
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            lineHeight: `${ROW_HEIGHT}px`,
+                            // tall cells: wrap text so full question is visible
+                            whiteSpace: isTall ? 'normal' : 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: isTall ? 'clip' : 'ellipsis',
+                            lineHeight: isTall ? '1.5' : `${ROW_HEIGHT}px`,
                           }}>
                             {display || (isAnswer && (
                               <span style={{ color: '#fbbf24', fontSize: 10, fontWeight: 600, letterSpacing: '0.3px' }}>
@@ -705,7 +724,7 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
         </span>
         <span style={{ color: 'rgba(139,92,246,.3)' }}>·</span>
         <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'DM Sans, sans-serif' }}>
-          Celdas <span style={{ color: '#c084fc', fontWeight: 600 }}>moradas</span> = tus respuestas
+          Celdas <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarillas</span> = tus respuestas
         </span>
         <span style={{ color: 'rgba(139,92,246,.3)' }}>·</span>
         <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'DM Sans, sans-serif' }}>

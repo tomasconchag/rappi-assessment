@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     const mathScoreRaw  = b.mathScoreRaw  as number
     const mathScoreTotal = b.mathScoreTotal as number
     const mathScorePct  = b.mathScorePct  as number
+    const mathTimeSecs  = b.mathTimeSecs  as number | null | undefined
     const casoAnsweredCount = b.casoAnsweredCount as number
     const casoScorePct  = b.casoScorePct  as number
     const overallScorePct = b.overallScorePct as number
@@ -142,40 +143,6 @@ export async function POST(req: NextRequest) {
     const enabledSections   = (configData?.enabled_sections as string[]) ?? ['sharktank', 'caso', 'math']
     const challengeWeights  = (configData?.challenge_weights as Record<string, number>) ?? null
 
-    // Create submission
-    const { data: sub, error: subErr } = await supabase
-      .from('submissions')
-      .insert({
-        candidate_id: cand.id,
-        config_id: configId,
-        clerk_user_id: clerkUserId ?? null,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        video_storage_path: videoPath as string ?? null,
-        video_mime_type: videoMimeType as string ?? null,
-        video_recorded: videoRecorded as boolean ?? false,
-        roleplay_completed: roleplayCompleted as boolean ?? false,
-        roleplay_video_path: roleplayVideoPath as string ?? null,
-        ...(roleplayTranscript ? { roleplay_transcript: roleplayTranscript } : {}),
-        enabled_sections: enabledSections,
-        challenge_weights: challengeWeights,
-        math_score_raw: mathScoreRaw as number ?? 0,
-        math_score_total: mathScoreTotal as number ?? 0,
-        math_score_pct: mathScorePct as number ?? 0,
-        caso_answered_count: casoAnsweredCount as number ?? 0,
-        caso_score_pct: casoScorePct as number ?? 0,
-        overall_score_pct: overallScorePct as number ?? 0,
-      })
-      .select('id')
-      .single()
-
-    if (subErr) {
-      console.error('[submissions] insert error:', subErr.message, subErr.code)
-      return Response.json({ error: subErr.message }, { status: 500 })
-    }
-    console.log(`[submissions] submission inserted id=${sub.id} (${Date.now()-t0}ms)`)
-    const submissionId = sub.id
-
     // Fetch questions to map answers
     const { data: questions } = await supabase
       .from('assessment_questions')
@@ -185,20 +152,16 @@ export async function POST(req: NextRequest) {
     const casoQs = (questions || []).filter(q => q.section === 'caso').sort((a: { position: number }, b: { position: number }) => a.position - b.position)
     const mathQs = (questions || []).filter(q => q.section === 'math').sort((a: { position: number }, b: { position: number }) => a.position - b.position)
 
-    // Insert caso answers
     const casoRows = casoQs.map((q: { id: string; section: string }, i: number) => ({
-      submission_id: submissionId,
       question_id: q.id,
       section: 'caso',
       answer_text: casoAnswers[q.id] || '',
       time_spent_s: casoTimings[i] || 0,
     }))
 
-    // Insert math answers
     const mathRows = mathQs.map((q: { id: string; section: string }, i: number) => {
       const detail = mathDetails?.find((d: { idx: number }) => d.idx === i)
       return {
-        submission_id: submissionId,
         question_id: q.id,
         section: 'math',
         answer_text: mathAnswers[i] || '',
@@ -208,41 +171,49 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    const allAnswers = [...casoRows, ...mathRows]
-    if (allAnswers.length > 0) {
-      const { error: ansErr } = await supabase.from('answers').insert(allAnswers)
-      if (ansErr) console.error('Answers error:', ansErr)
-    }
+    const snapshotRows = snapshotPaths.map((path: string, i: number) => ({
+      storage_path: path,
+      taken_at: new Date().toISOString(),
+      snap_index: i + 1,
+    }))
 
-    // Insert proctoring report
-    const { error: procErr } = await supabase.from('proctoring_reports').insert({
-      submission_id: submissionId,
-      tab_out_count: proctoring.tab_out_count,
-      tab_time_s: proctoring.tab_time_s,
-      paste_attempts: proctoring.paste_attempts,
-      copy_attempts: proctoring.copy_attempts,
-      fs_exit_count: proctoring.fs_exit_count,
-      rclick_count: proctoring.rclick_count,
-      key_block_count: proctoring.key_block_count,
-      honeypot_fails: proctoring.honeypot_fails,
-      warning_count: proctoring.warning_count,
-      fraud_score: proctoring.fraud_score,
-      fraud_level: proctoring.fraud_level,
-      events: proctoring.events,
+    // ── Atomic insert: submission + answers + proctoring + snapshots ──────────
+    // Uses a Postgres RPC so all writes succeed or none do.
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('create_submission_atomic', {
+      p_candidate_id: cand.id,
+      p_submission: {
+        config_id: configId,
+        clerk_user_id: clerkUserId ?? null,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        video_storage_path: videoPath ?? null,
+        video_mime_type: videoMimeType ?? null,
+        video_recorded: videoRecorded ?? false,
+        roleplay_completed: roleplayCompleted ?? false,
+        roleplay_video_path: roleplayVideoPath ?? null,
+        roleplay_transcript: roleplayTranscript ?? null,
+        enabled_sections: enabledSections,
+        challenge_weights: challengeWeights,
+        math_score_raw: mathScoreRaw ?? 0,
+        math_score_total: mathScoreTotal ?? 0,
+        math_score_pct: mathScorePct ?? 0,
+        math_time_secs: mathTimeSecs ?? null,
+        caso_answered_count: casoAnsweredCount ?? 0,
+        caso_score_pct: casoScorePct ?? 0,
+        overall_score_pct: overallScorePct ?? 0,
+      },
+      p_answers: [...casoRows, ...mathRows],
+      p_proctoring: proctoring,
+      p_snapshots: snapshotRows,
     })
-    if (procErr) console.error('Proctoring error:', procErr)
 
-    // Insert snapshots
-    if (snapshotPaths?.length > 0) {
-      const snapRows = snapshotPaths.map((path: string, i: number) => ({
-        submission_id: submissionId,
-        storage_path: path,
-        taken_at: new Date().toISOString(),
-        snap_index: i + 1,
-      }))
-      const { error: snapErr } = await supabase.from('webcam_snapshots').insert(snapRows)
-      if (snapErr) console.error('Snapshots error:', snapErr)
+    if (rpcErr) {
+      console.error('[submissions] atomic insert error:', rpcErr.message, rpcErr.code)
+      return Response.json({ error: rpcErr.message }, { status: 500 })
     }
+
+    const submissionId = (rpcResult as { id: string }).id
+    console.log(`[submissions] atomic insert done id=${submissionId} (${Date.now()-t0}ms)`)
 
     // ── Auto-trigger AI evaluations after response is sent ───────────────────
     const evalBase = process.env.NEXT_PUBLIC_APP_URL || 'https://rappi-assessment.vercel.app'

@@ -85,6 +85,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const [candidatePhone, setCandidatePhone] = useState<string>('')
   // Roleplay case (injected from cohort)
   const [roleplayCase, setRoleplayCase] = useState<RoleplayCase | null>(null)
+  const [roleplayBankCase, setRoleplayBankCase] = useState<import('@/types/assessment').RoleplayBankEntry | null>(null)
 
   // Spreadsheet math mode
   const spreadsheetVersion = useRef<'A' | 'B'>(
@@ -92,7 +93,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       ? liveConfig.math_version
       : randomVersion()
   )
-  const spreadsheetAnswersRef = useRef<SpreadsheetAnswer[]>([])
+  const spreadsheetAnswersRef  = useRef<SpreadsheetAnswer[]>([])
+  const spreadsheetSecsLeftRef = useRef<number>(0)
 
   const enabled = liveConfig?.enabled_sections ?? ['sharktank', 'caso', 'math'] as SectionId[]
   const stepLabels = [
@@ -226,8 +228,10 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
             mathModeOverride: 'questions' | 'spreadsheet' | null
             voiceProviderOverride: 'vapi' | 'arbol' | null
             roleplayCase: RoleplayCase | null
+            roleplayBankCase: import('@/types/assessment').RoleplayBankEntry | null
           }
           if (data.roleplayCase) setRoleplayCase(data.roleplayCase)
+          if (data.roleplayBankCase) setRoleplayBankCase(data.roleplayBankCase)
           if (data.casoBankEntry || data.enabledSections || data.mathModeOverride || data.voiceProviderOverride) {
             const bankEntry = data.casoBankEntry
             const newSections = (data.enabledSections as import('@/lib/challenges').SectionId[] | null)
@@ -279,17 +283,20 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
 
     const proctoringData = proctor.getData()
     const isSpreadsheetMode = liveConfig.math_mode === 'spreadsheet'
-    let correct: number, total: number, mathPct: number, honeypotFails: number, details: ReturnType<typeof scoreMath>['details']
+    let correct: number, total: number, mathPct: number, honeypotFails: number, details: ReturnType<typeof scoreMath>['details'], mathTimeSecs: number | null
     if (isSpreadsheetMode) {
-      const tmpl = getSpreadsheetVersion(spreadsheetVersion.current)
-      const ssResult = scoreMathSpreadsheet(tmpl, inlineSpreadsheetAnswers ?? spreadsheetAnswersRef.current)
+      const tmpl      = getSpreadsheetVersion(spreadsheetVersion.current)
+      const secsLeft  = spreadsheetSecsLeftRef.current
+      const ssResult  = scoreMathSpreadsheet(tmpl, inlineSpreadsheetAnswers ?? spreadsheetAnswersRef.current, secsLeft, 600)
       correct = ssResult.correct; total = ssResult.total; mathPct = ssResult.pct
+      mathTimeSecs  = 600 - secsLeft   // seconds used
       honeypotFails = 0
       details = ssResult.details.map((d, i) => ({ idx: i, correct: d.correct, pointsAwarded: d.correct ? 1 : 0 }))
     } else {
       const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
       const r = scoreMath(mathQs, state.mathAnswers)
       correct = r.correct; total = r.total; mathPct = r.pct; honeypotFails = r.honeypotFails; details = r.details
+      mathTimeSecs = null
     }
     const { answered, pct: casoPct } = scoreCaso(state.casoAnswers, casoQuestions.length || 4)
     const overall = calcOverall(state.videoRecorded, casoPct, mathPct, liveConfig.enabled_sections)
@@ -378,6 +385,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         videoPath, videoMimeType: state.videoMimeType, videoRecorded: state.videoRecorded,
         roleplayCompleted: state.roleplayCompleted, roleplayVideoPath,
         mathScoreRaw: correct, mathScoreTotal: total, mathScorePct: mathPct,
+        mathTimeSecs,
         casoAnsweredCount: answered, casoScorePct: casoPct, overallScorePct: overall,
         casoAnswers: state.casoAnswers, casoTimings: state.casoTimings,
         mathAnswers: state.mathAnswers, mathTimings: state.mathTimings, mathDetails: details,
@@ -731,8 +739,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       }} />
       )}
       {state.screen === 'roleplay_intro' && <RolePlayIntroScreen onStart={handleRolePlayStart} />}
-      {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} voiceProvider={liveConfig.voice_provider ?? 'vapi'} onPhoneCapture={setCandidatePhone} roleplayCase={roleplayCase} />}
-      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} voiceProvider={liveConfig.voice_provider ?? 'vapi'} candidatePhone={candidatePhone || undefined} roleplayCase={roleplayCase} />}
+      {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} voiceProvider={liveConfig.voice_provider ?? 'vapi'} onPhoneCapture={setCandidatePhone} roleplayCase={roleplayCase} roleplayBankCase={roleplayBankCase} />}
+      {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} voiceProvider={liveConfig.voice_provider ?? 'vapi'} candidatePhone={candidatePhone || undefined} roleplayCase={roleplayCase} roleplayBankCase={roleplayBankCase} />}
       {state.screen === 'roleplay_done' && <RolePlayDoneScreen onNext={handleRolePlayNext} />}
       {state.screen === 'caso_intro' && (
         <CasoIntroScreen
@@ -760,8 +768,9 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       {state.screen === 'math_question' && liveConfig.math_mode === 'spreadsheet' && (
         <MathSpreadsheetScreen
           template={getSpreadsheetVersion(spreadsheetVersion.current)}
-          onDone={answers => {
-            spreadsheetAnswersRef.current = answers
+          onDone={(answers, secsLeft) => {
+            spreadsheetAnswersRef.current  = answers
+            spreadsheetSecsLeftRef.current = secsLeft
             dispatch({ type: 'GO_SCREEN', screen: 'completion' })
             submitAll(answers)
           }}

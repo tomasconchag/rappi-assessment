@@ -32,16 +32,16 @@ interface Props {
 }
 
 const METRIC_LABELS: Record<string, string> = {
-  M1:  'Stakeholder Validation',
-  M2:  'Business & Performance Discovery',
-  M3:  'Problem Framing & Opportunity Sizing',
-  M4:  'Solution Proposal — Ads & Markdowns',
-  M5:  'Performance Ownership & Follow-Up',
-  M6:  'Objection Handling',
-  M7:  'Active Listening & Adaptability',
-  M8:  'Product & Platform Knowledge',
-  M9:  'Legitimate Urgency Generation',
-  M10: 'Presence & Conversation Control',
+  C1: 'Diagnóstico y Venta Consultiva',
+  C2: 'Propuesta de Solución',
+  C3: 'Manejo de Objeciones',
+  C4: 'Escucha Activa y Empatía',
+  C5: 'Cierre y Seguimiento',
+  C6: 'Componentes Conductuales',
+}
+
+const METRIC_MAX: Record<string, number> = {
+  C1: 25, C2: 20, C3: 20, C4: 15, C5: 10, C6: 10,
 }
 
 const bandColor = (band: string) => {
@@ -216,8 +216,9 @@ export function RolePlayEvalSection({
           <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 4 }}>Desglose por métrica</div>
           {Object.entries(evaluation.metrics).map(([key, metric]) => {
             const isExpanded = expandedMetric === key
-            const pct = metric.max > 0 ? (metric.score / metric.max) * 100 : 0
-            const col = scoreColor(metric.score, metric.max)
+            const effectiveMax = metric.max > 0 ? metric.max : (METRIC_MAX[key] ?? 100)
+            const pct = effectiveMax > 0 ? (metric.score / effectiveMax) * 100 : 0
+            const col = scoreColor(metric.score, effectiveMax)
             return (
               <div
                 key={key}
@@ -240,7 +241,7 @@ export function RolePlayEvalSection({
                     <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 2, transition: 'width .3s' }} />
                   </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, fontWeight: 700, color: col, flexShrink: 0, width: 52, textAlign: 'right' }}>
-                    {metric.score}/{metric.max}
+                    {metric.score}/{effectiveMax}
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 10, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</div>
                 </div>

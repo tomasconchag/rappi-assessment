@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { RoleplayCase } from '@/types/assessment'
+import type { RoleplayCase, RoleplayBankEntry } from '@/types/assessment'
 
 interface Props {
   onDone: () => void
@@ -9,6 +9,7 @@ interface Props {
   voiceProvider: 'vapi' | 'arbol'
   candidatePhone?: string
   roleplayCase?: RoleplayCase | null
+  roleplayBankCase?: RoleplayBankEntry | null
 }
 
 const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
@@ -57,7 +58,7 @@ function playBeep(frequency: number, duration: number, times = 1) {
 
 type CallStatus = 'connecting' | 'active' | 'ended'
 
-export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone, roleplayCase }: Props) {
+export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone, roleplayCase, roleplayBankCase }: Props) {
   const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
 
   const [secondsLeft,  setSecondsLeft]  = useState(TOTAL_SECONDS)
@@ -108,8 +109,8 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
       try {
         const VapiModule = await import('@vapi-ai/web')
         const Vapi = VapiModule.default
-        const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
-        const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID
+        const publicKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY?.trim()
+        const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim()
         if (!publicKey || !assistantId) throw new Error('Vapi keys not configured')
 
         const vapi = new Vapi(publicKey)
@@ -147,7 +148,10 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
               msg = e.message
             } else if (e && typeof e === 'object') {
               const obj = e as Record<string, unknown>
-              msg = String(obj.message ?? obj.error ?? obj.errorMsg ?? obj.type ?? JSON.stringify(e))
+              const inner = obj.message ?? obj.error ?? obj.errorMsg ?? obj.type
+              msg = inner && typeof inner === 'object'
+                ? JSON.stringify(inner)
+                : String(inner ?? JSON.stringify(e))
             } else if (typeof e === 'string') {
               msg = e
             }
@@ -156,40 +160,49 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           }
         })
 
-        // Build context prompt from roleplay case data
-        const ownerTitle = rc.owner_gender === 'f' ? 'dueña' : 'dueño'
-        const strategiesText = rc.strategies.map(s =>
-          `- ${s.name}: ROI ${s.roi} — ${s.status === 'active' ? 'ACTIVO' : s.status === 'underused' ? 'SUBUTILIZADO' : 'INACTIVO'}${s.note ? ` (${s.note})` : ''}`
-        ).join('\n')
-        const opportunitiesText = rc.opportunities.map(o => `- ${o}`).join('\n')
+        // Build context prompt — use rich bank case fields when available, fallback to legacy RoleplayCase
+        let contextPrompt: string
 
-        const contextPrompt = `
-INFORMACIÓN DE TU RESTAURANTE (úsala en la conversación):
-- Eres ${rc.owner_name}, ${ownerTitle} de ${rc.restaurant_name} — ${rc.category} en ${rc.city}
-- Horario: ${rc.schedule}
+        if (roleplayBankCase) {
+          contextPrompt = `RESTAURANTE: ${roleplayBankCase.restaurant_name} — ${roleplayBankCase.category}, ${roleplayBankCase.city}
+
+CÓMO ERES Y CÓMO HABLAS:
+${roleplayBankCase.owner_profile}
+
+INFORMACIÓN QUE SABES PERO SOLO REVELAS SI TE HACEN LA PREGUNTA CORRECTA:
+${roleplayBankCase.character_brief}
+
+OBJECIONES QUE DEBES INTRODUCIR A LO LARGO DE LA LLAMADA:
+${roleplayBankCase.key_objections}`.trim()
+        } else {
+          const ownerTitle = rc.owner_gender === 'f' ? 'dueña' : 'dueño'
+          const strategiesText = rc.strategies.map(s =>
+            `- ${s.name}: ROI ${s.roi} — ${s.status === 'active' ? 'ACTIVO' : s.status === 'underused' ? 'SUBUTILIZADO' : 'INACTIVO'}${s.note ? ` (${s.note})` : ''}`
+          ).join('\n')
+          const opportunitiesText = rc.opportunities.map(o => `- ${o}`).join('\n')
+          contextPrompt = `RESTAURANTE: ${rc.restaurant_name} — ${rc.category}, ${rc.city}
+Eres ${rc.owner_name}, ${ownerTitle}. Horario: ${rc.schedule}
 
 MÉTRICAS ACTUALES:
 - Ticket promedio: ${rc.ticket_avg}
 - Pedidos por semana: ${rc.orders_per_week}
-- Tiempo sin cambios significativos: ${rc.inactive_time}
+- Tiempo sin cambios: ${rc.inactive_time}
 
-ESTRATEGIAS ACTIVAS EN RAPPI:
+ESTRATEGIAS EN RAPPI:
 ${strategiesText}
 
 OPORTUNIDADES QUE EL AE PODRÍA MENCIONAR:
-${opportunitiesText}
+${opportunitiesText}`.trim()
+        }
 
-INSTRUCCIONES: Cuando el AE mencione datos específicos de tu negocio, reacciona de forma realista. Si propone activar más ads, menciona que tienes presupuesto sin usar. Si habla de descuentos, confirma el ROI que ya tienes activo. Usa tu nombre (${rc.owner_name}) y el del restaurante (${rc.restaurant_name}) naturalmente en la conversación.
-`.trim()
-
+        // Inject case context via variableValues — the Vapi agent prompt
+        // must contain {{case_context}} placeholder for this to take effect.
+        // Falls back gracefully (no error) if the placeholder isn't present.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await vapi.start(assistantId, {
-          model: {
-            messages: [{
-              role: 'system',
-              content: contextPrompt,
-            }]
-          }
+          variableValues: {
+            case_context: contextPrompt,
+          },
         } as any)
       } catch (e) {
         if (!cancelled) {

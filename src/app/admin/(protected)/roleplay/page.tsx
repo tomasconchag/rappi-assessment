@@ -1,17 +1,25 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { VoiceProviderToggle } from '../settings/VoiceProviderToggle'
-import { RolePlayTestButton } from './RolePlayTestButton'
+import { RolePlayTestPanel } from './RolePlayTestPanel'
+import { RolePlayBankSelector } from './RolePlayBankSelector'
+import type { RoleplayBankEntry } from '@/types/assessment'
 
 export default async function RolePlayPage() {
   const supabase = createAdminClient()
 
-  const { data: configData } = await supabase
-    .from('assessment_configs')
-    .select('id, voice_provider')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  const [{ data: configData }, { data: roleplayCases }] = await Promise.all([
+    supabase
+      .from('assessment_configs')
+      .select('id, voice_provider, active_roleplay_case_id')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single(),
+    supabase
+      .from('roleplay_bank')
+      .select('*')
+      .order('sort_order', { ascending: true }),
+  ])
 
   const card: React.CSSProperties = {
     background: 'var(--card)',
@@ -31,7 +39,7 @@ export default async function RolePlayPage() {
           Role Play
         </h1>
         <p style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'DM Sans, sans-serif' }}>
-          Configura el agente de voz para el roleplay.
+          Configura el agente de voz y prueba llamadas con cualquier caso.
         </p>
       </div>
 
@@ -44,21 +52,10 @@ export default async function RolePlayPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Test call */}
-          <div style={{ ...card, borderTop: '3px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-            <div>
-              <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, marginBottom: 4 }}>
-                Probar llamada
-              </div>
-              <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.5, margin: 0 }}>
-                Inicia una llamada de prueba como candidato — sin crear usuarios ni pasar por el flujo completo.
-              </p>
-            </div>
-            <RolePlayTestButton
-              voiceProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
-              roleplayCase={null}
-            />
-          </div>
+          {/* Test panel — call button + case editor */}
+          <RolePlayTestPanel
+            voiceProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
+          />
 
           {/* Voice Provider selector */}
           <div style={{ ...card, borderTop: '3px solid var(--border)' }}>
@@ -73,6 +70,17 @@ export default async function RolePlayPage() {
               currentProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
             />
           </div>
+
+          {/* Roleplay case bank */}
+          {roleplayCases && roleplayCases.length > 0 && (
+            <div style={{ ...card, borderTop: '3px solid #f59e0b' }}>
+              <RolePlayBankSelector
+                configId={configData.id}
+                initialActiveId={(configData as { active_roleplay_case_id?: string | null }).active_roleplay_case_id ?? null}
+                cases={roleplayCases as RoleplayBankEntry[]}
+              />
+            </div>
+          )}
 
         </div>
       )}

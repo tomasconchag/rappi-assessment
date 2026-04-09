@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { RoleplayCase } from '@/types/assessment'
+import type { RoleplayCase, RoleplayBankEntry } from '@/types/assessment'
 
 interface Props {
   onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null) => void
   voiceProvider?: 'vapi' | 'arbol'
   onPhoneCapture?: (phone: string) => void
   roleplayCase?: RoleplayCase | null
+  roleplayBankCase?: RoleplayBankEntry | null
 }
 
 const PREP_SECONDS = 5 * 60
@@ -54,7 +55,7 @@ function playBeep(frequency: number, duration: number, times = 1) {
   } catch { /* ignore */ }
 }
 
-export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture, roleplayCase }: Props) {
+export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture, roleplayCase, roleplayBankCase }: Props) {
   const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
   const maxBar = Math.max(...rc.sales_data)
   const ownerTitle = rc.owner_gender === 'f' ? 'Dueña' : 'Dueño'
@@ -573,7 +574,112 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
       )}
 
       {/* ── CRM Content (only visible when recording) ── */}
-      {recStatus === 'recording' && (
+      {recStatus === 'recording' && roleplayBankCase && (
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '24px 28px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+        }}>
+          {/* Client header */}
+          <div style={{
+            background: 'var(--card)',
+            border: '1px solid rgba(245,158,11,.25)',
+            borderLeft: '3px solid #f59e0b',
+            borderRadius: 12,
+            padding: '20px 24px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 24,
+            flexWrap: 'wrap',
+          }}>
+            <div>
+              <div style={{
+                fontFamily: 'Space Mono, monospace', fontSize: 9,
+                textTransform: 'uppercase', letterSpacing: '1.5px',
+                color: '#f59e0b', marginBottom: 8,
+              }}>
+                Cliente asignado
+              </div>
+              <div style={{
+                fontFamily: 'Fraunces, serif', fontSize: 22,
+                fontWeight: 700, color: 'var(--text)', marginBottom: 4,
+              }}>
+                {roleplayBankCase.restaurant_name}
+              </div>
+              <div style={{
+                fontFamily: 'DM Sans, sans-serif', fontSize: 13.5,
+                color: 'var(--dim)', lineHeight: 1.6,
+              }}>
+                Dueño · <strong style={{ color: 'var(--text)' }}>{roleplayBankCase.owner_name}</strong>
+              </div>
+              <div style={{
+                fontFamily: 'DM Sans, sans-serif', fontSize: 12,
+                color: 'var(--muted)', marginTop: 4,
+              }}>
+                {roleplayBankCase.category} · {roleplayBankCase.city}, Colombia
+              </div>
+            </div>
+            <div style={{
+              background: 'rgba(245,158,11,.08)',
+              border: '1px solid rgba(245,158,11,.2)',
+              borderRadius: 10, padding: '10px 16px',
+              fontFamily: 'Space Mono, monospace', fontSize: 10,
+              color: '#f59e0b', letterSpacing: '.5px',
+              textTransform: 'uppercase',
+            }}>
+              Dificultad: {roleplayBankCase.difficulty}
+            </div>
+          </div>
+
+          {/* Farmer briefing — the core content */}
+          <div style={{
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: '22px 26px',
+            flex: 1,
+          }}>
+            <div style={{
+              fontFamily: 'Space Mono, monospace', fontSize: 9,
+              textTransform: 'uppercase', letterSpacing: '1.5px',
+              color: 'var(--muted)', marginBottom: 16,
+            }}>
+              📋 Tu briefing — lo que sabes antes de llamar
+            </div>
+            <div style={{
+              fontFamily: 'DM Sans, sans-serif', fontSize: 14,
+              color: 'var(--text)', lineHeight: 1.8,
+              whiteSpace: 'pre-line',
+            }}>
+              {roleplayBankCase.farmer_briefing}
+            </div>
+          </div>
+
+          {/* Reminder banner */}
+          <div style={{
+            background: 'rgba(245,158,11,.06)',
+            border: '1px solid rgba(245,158,11,.18)',
+            borderRadius: 10, padding: '14px 20px',
+            display: 'flex', alignItems: 'flex-start', gap: 14,
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
+            <div style={{
+              fontFamily: 'DM Sans, sans-serif', fontSize: 13,
+              color: '#f59e0b', lineHeight: 1.65,
+            }}>
+              <strong>Recuerda:</strong>{' '}
+              Tienes 5 minutos de preparación y luego comenzará la llamada en vivo con el dueño. Usa los datos del briefing para argumentar con cifras y cerrar con un siguiente paso concreto.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CRM Content legacy (only visible when recording, no bank case) ── */}
+      {recStatus === 'recording' && !roleplayBankCase && (
         <div style={{
           flex: 1,
           overflowY: 'auto',

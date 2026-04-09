@@ -19,6 +19,7 @@ export type CellDef = {
   format?: 'currency' | 'percent' | 'number' | 'decimal'
   align?: 'left' | 'center' | 'right'
   color?: string
+  tall?: boolean          // allow row to grow in height (used for question labels with long text)
 }
 
 export type AnswerCell = {
@@ -99,7 +100,7 @@ function menuCells(): CellDef[] {
 
 // ─── Question label helper ────────────────────────────────────────────────
 function qLabel(r: number, text: string): CellDef {
-  return { r, c: 4, v: text, bg: BG.label, color: COL.dim, locked: true }
+  return { r, c: 4, v: text, bg: BG.label, color: COL.dim, locked: true, tall: true }
 }
 
 // ─── Answer cell helper ───────────────────────────────────────────────────
@@ -359,10 +360,31 @@ export function randomVersion(): 'A' | 'B' {
 // ─── Scoring ──────────────────────────────────────────────────────────────
 export type SpreadsheetAnswer = { r: number; c: number; value: number | string | null }
 
+/**
+ * Score the spreadsheet with time bonus.
+ *
+ * Formula:  final = accuracy * 0.80 + time_remaining_ratio * 0.20
+ *
+ * - accuracy         = correct / total  (0–1)
+ * - time_remaining   = secsLeft / totalSecs  (0–1, higher = faster)
+ *
+ * Examples (8 questions, 10 min total):
+ *   All correct, 9 min left  → 80 + 18 = 98%
+ *   All correct, 5 min left  → 80 + 10 = 90%
+ *   All correct, 0 min left  → 80 +  0 = 80%
+ *   Half correct, 5 min left → 40 + 10 = 50%
+ */
 export function scoreMathSpreadsheet(
   template: SpreadsheetVersion,
   answers: SpreadsheetAnswer[],
-): { correct: number; total: number; pct: number; details: { q: number; label: string; expected: string; got: string; correct: boolean }[] } {
+  secsLeft = 0,
+  totalSecs = 600,
+): {
+  correct: number; total: number
+  accuracyPct: number   // raw % correct (no time factor)
+  pct: number           // final time-adjusted score
+  details: { q: number; label: string; expected: string; got: string; correct: boolean }[]
+} {
   const total = template.answerCells.length
   const details = template.answerCells.map(ac => {
     const ans = answers.find(a => a.r === ac.r && a.c === ac.c)
@@ -390,5 +412,15 @@ export function scoreMathSpreadsheet(
   })
 
   const correct = details.filter(d => d.correct).length
-  return { correct, total, pct: Math.round((correct / total) * 100), details }
+  const accuracyRatio      = total > 0 ? correct / total : 0
+  const timeRemainingRatio = totalSecs > 0 ? Math.max(0, Math.min(1, secsLeft / totalSecs)) : 0
+  const pct = Math.round(accuracyRatio * 80 + timeRemainingRatio * 20)
+
+  return {
+    correct,
+    total,
+    accuracyPct: Math.round(accuracyRatio * 100),
+    pct,
+    details,
+  }
 }

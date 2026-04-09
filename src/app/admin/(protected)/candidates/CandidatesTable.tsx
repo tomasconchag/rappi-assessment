@@ -38,7 +38,6 @@ function computeOverall(s: Submission): number | null {
   const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
   const weights = normalizedWeights(sec, s.challenge_weights ?? undefined)
 
-  // Collect sections that are enabled AND have a numeric score available
   const scored: { id: SectionId; score: number }[] = []
   if (sec.includes('math')     && s.math_score_pct  != null) scored.push({ id: 'math',     score: s.math_score_pct })
   if (sec.includes('caso')     && s.caso_score_pct  != null) scored.push({ id: 'caso',     score: s.caso_score_pct })
@@ -86,12 +85,12 @@ function exportCSV(submissions: Submission[]) {
   const csv = [headers.join(','), ...rows].join('\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
   const a = document.createElement('a')
-  a.href = url; a.download = `candidatos_${new Date().toISOString().slice(0,10)}.csv`
+  a.href = url; a.download = `candidatos_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
 
-type SortKey = 'date' | 'overall' | 'math' | 'caso'
+type SortKey = 'date' | 'overall' | 'math' | 'caso' | 'roleplay'
 type SortDir = 'asc' | 'desc'
 type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
 
@@ -118,19 +117,34 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         if (!cand?.name?.toLowerCase().includes(q) && !cand?.email?.toLowerCase().includes(q)) return false
       }
       if (fraudFilter !== 'all' && pr?.fraud_level !== fraudFilter) return false
-      if (minScore && (s.overall_score_pct ?? 0) < Number(minScore)) return false
+      if (minScore && (computeOverall(s) ?? 0) < Number(minScore)) return false
       return true
     })
     .sort((a, b) => {
       let va = 0, vb = 0
-      if (sortKey === 'date') {
-        va = new Date(a.completed_at || 0).getTime()
-        vb = new Date(b.completed_at || 0).getTime()
-      } else if (sortKey === 'overall') { va = computeOverall(a) ?? 0; vb = computeOverall(b) ?? 0 }
-      else if (sortKey === 'math')    { va = a.math_score_pct ?? 0;    vb = b.math_score_pct ?? 0 }
-      else if (sortKey === 'caso')    { va = a.caso_score_pct ?? 0;    vb = b.caso_score_pct ?? 0 }
+      if (sortKey === 'date')    { va = new Date(a.completed_at || 0).getTime(); vb = new Date(b.completed_at || 0).getTime() }
+      else if (sortKey === 'overall')  { va = computeOverall(a) ?? 0; vb = computeOverall(b) ?? 0 }
+      else if (sortKey === 'math')     { va = a.math_score_pct ?? 0;  vb = b.math_score_pct ?? 0 }
+      else if (sortKey === 'caso')     { va = a.caso_score_pct ?? 0;  vb = b.caso_score_pct ?? 0 }
+      else if (sortKey === 'roleplay') { va = a.roleplay_score ?? 0;  vb = b.roleplay_score ?? 0 }
       return sortDir === 'desc' ? vb - va : va - vb
     })
+
+  // ── Summary stats ────────────────────────────────────────────────────────
+  const total        = submissions.length
+  const withScore    = submissions.filter(s => (computeOverall(s) ?? 0) > 0)
+  const avgScore     = withScore.length > 0
+    ? Math.round(withScore.reduce((sum, s) => sum + (computeOverall(s) ?? 0), 0) / withScore.length)
+    : 0
+  const completados  = withScore.length
+  const pendienteIA  = submissions.filter(s => s.roleplay_completed && s.roleplay_score == null).length
+
+  const statCards = [
+    { label: 'Total candidatos',    value: total,        color: 'var(--blue)',  icon: '👥' },
+    { label: 'Score promedio',      value: `${avgScore}%`, color: scoreColor(avgScore), icon: '📊' },
+    { label: 'Completados',         value: completados,  color: 'var(--teal)', icon: '✅' },
+    { label: 'Pendientes eval IA',  value: pendienteIA,  color: pendienteIA > 0 ? 'var(--gold)' : 'var(--muted)', icon: '🤖' },
+  ]
 
   const th: React.CSSProperties = {
     padding: '11px 16px',
@@ -154,7 +168,30 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
 
   return (
     <div>
-      {/* Search bar */}
+      {/* ── SUMMARY STATS BAR ───────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        {statCards.map(s => (
+          <div key={s.label} style={{
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r)',
+            padding: '18px 20px',
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}>
+            <div style={{ fontSize: 24, flexShrink: 0 }}>{s.icon}</div>
+            <div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 700, color: s.color, lineHeight: 1 }}>
+                {s.value}
+              </div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', marginTop: 4 }}>
+                {s.label}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── SEARCH BAR ──────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 16, position: 'relative' }}>
         <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', display: 'flex' }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -193,7 +230,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         )}
       </div>
 
-      {/* Filter bar */}
+      {/* ── FILTER BAR ──────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
         {/* Fraud filter */}
         <select
@@ -249,7 +286,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         </span>
       </div>
 
-      {/* Table */}
+      {/* ── TABLE ───────────────────────────────────────────────────────── */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -272,16 +309,14 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                   style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => handleSort('math')}
                 >
-                  Math{sortIcon('math')}
+                  Excel{sortIcon('math')}
                 </th>
                 <th
                   style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => handleSort('caso')}
+                  onClick={() => handleSort('roleplay')}
                 >
-                  Caso{sortIcon('caso')}
+                  Role Play{sortIcon('roleplay')}
                 </th>
-                <th style={th}>SharkTank</th>
-                <th style={th}>Role Play</th>
                 <th style={th}>Integridad</th>
                 <th style={{ ...th, textAlign: 'right', paddingRight: 20 }}></th>
               </tr>
@@ -289,7 +324,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '56px 20px', textAlign: 'center' }}>
+                  <td colSpan={7} style={{ padding: '56px 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
                     <div style={{ fontSize: 14, color: 'var(--dim)', fontFamily: 'DM Sans' }}>
                       {query ? `Sin resultados para "${query}"` : 'No hay candidatos aún.'}
@@ -302,7 +337,9 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                 const date = s.completed_at
                   ? new Date(s.completed_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
                   : '—'
-                const fs = pr ? fraudStyle(pr.fraud_level) : null
+                const fs      = pr ? fraudStyle(pr.fraud_level) : null
+                const overall = computeOverall(s)
+                const sec     = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
 
                 return (
                   <tr
@@ -311,12 +348,12 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.025)'}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                   >
-                    {/* Candidate */}
+                    {/* Candidato */}
                     <td style={{ ...td, paddingLeft: 20 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{
                           width: 32, height: 32, borderRadius: '50%',
-                          background: 'rgba(67,97,238,.12)',
+                          background: 'linear-gradient(135deg, rgba(67,97,238,.25) 0%, rgba(58,12,163,.3) 100%)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 13, fontWeight: 700, color: 'var(--blue)',
                           flexShrink: 0, fontFamily: 'DM Sans',
@@ -334,81 +371,58 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                       </div>
                     </td>
 
-                    {/* Date */}
+                    {/* Fecha */}
                     <td style={{ ...td, fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                       {date}
                     </td>
 
-                    {/* Overall score */}
-                    {(() => {
-                      const overall = computeOverall(s)
-                      return (
-                        <td style={td}>
-                          {overall != null
-                            ? <ScoreBar value={overall} />
-                            : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
-                          }
-                        </td>
-                      )
-                    })()}
-
-                    {/* Math */}
+                    {/* Score General */}
                     <td style={td}>
-                      {!(s.enabled_sections ?? ['math']).includes('math')
-                        ? <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
-                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>{s.math_score_pct || 0}%</span>
+                      {overall != null
+                        ? <ScoreBar value={overall} />
+                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
                       }
                     </td>
 
-                    {/* Caso */}
+                    {/* Excel / Math */}
                     <td style={td}>
-                      {!(s.enabled_sections ?? ['caso']).includes('caso')
+                      {!sec.includes('math')
                         ? <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
-                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct || 0), fontWeight: 700 }}>{s.caso_score_pct || 0}%</span>
+                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>
+                            {s.math_score_pct || 0}%
+                          </span>
                       }
-                    </td>
-
-                    {/* SharkTank video */}
-                    <td style={td}>
-                      {!(s.enabled_sections ?? ['sharktank']).includes('sharktank') ? (
-                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--border)' }}>—</span>
-                      ) : s.video_recorded ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--teal)', fontFamily: 'Space Mono', fontWeight: 700 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal)', flexShrink: 0 }} />
-                          Grabado
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono', fontWeight: 700 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--muted)', flexShrink: 0 }} />
-                          No
-                        </span>
-                      )}
                     </td>
 
                     {/* Role Play */}
                     <td style={td}>
-                      {!(s.enabled_sections ?? []).includes('roleplay') ? (
-                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--border)' }}>—</span>
+                      {!sec.includes('roleplay') ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
                       ) : s.roleplay_score != null ? (
                         <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.roleplay_score), fontWeight: 700 }}>
                           {s.roleplay_score}%
                         </span>
                       ) : s.roleplay_completed ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#f59e0b', fontFamily: 'Space Mono', fontWeight: 700 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
-                          Pendiente IA
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 9px', borderRadius: 100,
+                          fontSize: 10.5, fontFamily: 'Space Mono, monospace', fontWeight: 700,
+                          color: 'var(--gold)',
+                          background: 'rgba(245,158,11,.08)',
+                          border: '1px solid rgba(245,158,11,.25)',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--gold)', flexShrink: 0 }} />
+                          Pendiente
                         </span>
                       ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)', fontFamily: 'Space Mono', fontWeight: 700 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--muted)', flexShrink: 0 }} />
-                          No
-                        </span>
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>No</span>
                       )}
                     </td>
 
-                    {/* Fraud */}
+                    {/* Integridad */}
                     <td style={td}>
-                      {fs && (
+                      {fs && pr ? (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                           padding: '4px 10px', borderRadius: 100,
@@ -420,12 +434,14 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                           whiteSpace: 'nowrap',
                         }}>
                           <div style={{ width: 5, height: 5, borderRadius: '50%', background: fs.dot, flexShrink: 0 }} />
-                          {fraudShort(pr!.fraud_level)}
+                          {fraudShort(pr.fraud_level)}
                         </span>
+                      ) : (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>—</span>
                       )}
                     </td>
 
-                    {/* Action */}
+                    {/* Ver */}
                     <td style={{ ...td, paddingRight: 20, textAlign: 'right' }}>
                       <Link
                         href={`/admin/candidates/${s.id}`}
@@ -443,10 +459,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.15)' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.08)' }}
                       >
-                        Ver detalle
-                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                          <path d="M2 5.5h7M6 2.5L9 5.5 6 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        Ver →
                       </Link>
                     </td>
                   </tr>
@@ -456,7 +469,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
           </table>
         </div>
 
-        {/* Footer */}
+        {/* ── FOOTER ────────────────────────────────────────────────────── */}
         {filtered.length > 0 && (
           <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>

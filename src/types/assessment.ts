@@ -72,6 +72,24 @@ export type CasoBankEntry = {
   sort_order?: number
 }
 
+export type RoleplayBankEntry = {
+  id: string
+  title: string
+  difficulty: string
+  restaurant_name: string
+  owner_name: string
+  owner_gender: 'm' | 'f'
+  city: string
+  category: string
+  farmer_briefing: string
+  owner_profile: string
+  character_brief: string
+  key_objections: string
+  trap: string
+  success_path: string
+  sort_order?: number
+}
+
 export type Question = {
   id: string
   section: 'caso' | 'math'

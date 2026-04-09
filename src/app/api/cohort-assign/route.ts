@@ -1,6 +1,6 @@
 import { type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { CasoBankEntry } from '@/types/assessment'
+import type { CasoBankEntry, RoleplayBankEntry } from '@/types/assessment'
 
 export async function POST(req: NextRequest) {
   const { token, email } = await req.json() as { token: string; email: string }
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Fetch the assigned case if any
+  // Fetch the assigned caso if any
   let casoBankEntry: CasoBankEntry | null = null
   if (assignedCasoId) {
     const { data: caso } = await supabase
@@ -89,6 +89,28 @@ export async function POST(req: NextRequest) {
     casoBankEntry = caso ?? null
   }
 
+  // Fetch active roleplay bank case from assessment config
+  // Cohort's manual roleplay_case JSONB takes precedence; if absent, use active_roleplay_case_id
+  let roleplayBankCase: RoleplayBankEntry | null = null
+  if (!cohort.roleplay_case) {
+    const { data: config } = await supabase
+      .from('assessment_configs')
+      .select('active_roleplay_case_id')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (config?.active_roleplay_case_id) {
+      const { data: bankCase } = await supabase
+        .from('roleplay_bank')
+        .select('*')
+        .eq('id', config.active_roleplay_case_id)
+        .single()
+      roleplayBankCase = bankCase ?? null
+    }
+  }
+
   return Response.json({
     cohortId: cohort.id,
     enabledSections: cohort.enabled_sections ?? null,
@@ -96,5 +118,6 @@ export async function POST(req: NextRequest) {
     mathModeOverride: cohort.math_mode_override ?? null,
     voiceProviderOverride: cohort.voice_provider_override ?? null,
     roleplayCase: cohort.roleplay_case ?? null,
+    roleplayBankCase,
   })
 }
