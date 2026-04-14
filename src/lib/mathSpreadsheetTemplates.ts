@@ -54,7 +54,7 @@ const BG = {
   header:   '#1e1e2e',   // section header rows
   data:     '#16213E',   // pre-filled data cells (locked)
   orange:   '#2d2010',   // helper / given data (orange tone)
-  answer:   '#1a1040',   // answer cells (purple-ish, editable)
+  answer:   '#221500',   // answer cells (amber dark, editable)
   label:    '#12122a',   // question text rows
   subhead:  '#0d1117',   // sub-table headers
 }
@@ -63,7 +63,7 @@ const COL = {
   muted:  '#8888aa',
   dim:    '#aaaacc',
   text:   '#e8e8ff',
-  accent: '#c084fc',   // answer cell accent
+  accent: '#f59e0b',   // answer cell accent — gold/amber
   orange: '#f0ac60',
   green:  '#00d68a',
   gold:   '#f59e0b',
@@ -109,6 +109,7 @@ function answerCell(r: number, c: number): CellDef {
 }
 
 // ─── Q8 Weighted average (shared structure, different grades) ─────────────
+// NOTE: starts at row 28 so it doesn't conflict with Q7's answer cell at row 27
 function q8Cells(grades: number[]): CellDef[] {
   const courses = [
     'Tácticas de ventas',
@@ -120,55 +121,50 @@ function q8Cells(grades: number[]): CellDef[] {
   const weights = [0.30, 0.20, 0.15, 0.20, 0.15]
 
   const cells: CellDef[] = [
-    qLabel(27, '8. Estás cursando un diplomado en ventas. Para graduarte necesitas promedio mínimo de 3,5. ¿Pasaste?'),
-    { r: 28, c: 4, v: 'Materia',            bold: true, bg: BG.subhead, color: COL.dim, locked: true },
-    { r: 28, c: 5, v: 'Peso nota final',    bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
-    { r: 28, c: 6, v: 'Calificación',       bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
-    { r: 28, c: 7, v: 'Ponderado',          bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
+    qLabel(28, '8. Estás cursando un diplomado en ventas. Para graduarte necesitas promedio mínimo de 3,5. ¿Pasaste?'),
+    { r: 29, c: 4, v: 'Materia',            bold: true, bg: BG.subhead, color: COL.dim, locked: true },
+    { r: 29, c: 5, v: 'Peso nota final',    bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
+    { r: 29, c: 6, v: 'Calificación',       bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
+    { r: 29, c: 7, v: 'Ponderado',          bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
   ]
 
   courses.forEach((course, i) => {
-    const row = 29 + i
-    const excelRow = row + 1  // 1-based for formula string
+    const row = 30 + i  // rows 30–34
     cells.push(
-      { r: row, c: 4, v: course,      bg: BG.data, color: COL.text,   locked: true },
-      { r: row, c: 5, v: weights[i],  bg: BG.data, color: COL.orange, locked: true, format: 'percent' },
-      { r: row, c: 6, v: grades[i],   bg: BG.data, color: COL.orange, locked: true, format: 'decimal' },
-      { r: row, c: 7, v: weights[i] * grades[i], formula: `=F${excelRow}*G${excelRow}`, bg: BG.orange, color: COL.orange, locked: true, format: 'decimal' },
+      { r: row, c: 4, v: course,      bg: BG.data,   color: COL.text,   locked: true },
+      { r: row, c: 5, v: weights[i],  bg: BG.data,   color: COL.orange, locked: true, format: 'percent' },
+      { r: row, c: 6, v: grades[i],   bg: BG.data,   color: COL.orange, locked: true, format: 'decimal' },
+      answerCell(row, 7),  // candidate must calculate: Peso × Calificación
     )
   })
 
-  // Total row
+  // Answer row — candidate writes the final weighted average
   cells.push(
-    { r: 34, c: 4, v: 'Promedio ponderado (calculado)', bold: true, bg: BG.subhead, color: COL.dim, locked: true },
-    { r: 34, c: 7, v: weights.reduce((s, w, i) => s + w * grades[i], 0), formula: '=SUM(H30:H34)', bg: BG.orange, color: COL.green, locked: true, format: 'decimal' },
-  )
-  // Answer cell
-  cells.push(
-    { r: 34, c: 4, v: '→ Escribe aquí tu respuesta (promedio ponderado):', bold: true, bg: BG.label, color: COL.dim, locked: true },
-    answerCell(34, 8),
+    { r: 35, c: 4, v: '→ Promedio ponderado (escribe tu resultado):', bold: true, bg: BG.label, color: COL.dim, locked: true },
+    answerCell(35, 8),
   )
   return cells
 }
 
 // ─── Q9 Rentabilidad (shared structure) ───────────────────────────────────
+// NOTE: starts at row 37 (Q8 ends at row 35, one blank gap)
 function q9Cells(): CellDef[] {
   return [
-    qLabel(36, '9. Las ventas del negocio A son $2.000.000/semana y del B $4.000.000. La rentabilidad de A es 20% y la de B 10%. ¿Cuál ganó más?'),
-    { r: 37, c: 4, v: '',            bg: BG.data, locked: true },
-    { r: 37, c: 5, v: 'Negocio A',   bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
-    { r: 37, c: 6, v: 'Negocio B',   bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
-    { r: 38, c: 4, v: 'Ventas semanales', bg: BG.data, color: COL.text, locked: true },
-    { r: 38, c: 5, v: 2000000, bg: BG.data, color: COL.orange, locked: true, format: 'currency' },
-    { r: 38, c: 6, v: 4000000, bg: BG.data, color: COL.orange, locked: true, format: 'currency' },
-    { r: 39, c: 4, v: 'Rentabilidad', bg: BG.data, color: COL.text, locked: true },
-    { r: 39, c: 5, v: 0.20, bg: BG.data, color: COL.orange, locked: true, format: 'percent' },
-    { r: 39, c: 6, v: 0.10, bg: BG.data, color: COL.orange, locked: true, format: 'percent' },
-    { r: 40, c: 4, v: 'Ganancia', bg: BG.data, color: COL.text, locked: true },
-    { r: 40, c: 5, v: 400000, formula: '=F39*F40', bg: BG.orange, color: COL.green, locked: true, format: 'currency' },
-    { r: 40, c: 6, v: 400000, formula: '=G39*G40', bg: BG.orange, color: COL.green, locked: true, format: 'currency' },
-    { r: 41, c: 4, v: '→ ¿Cuál ganó más? Escribe: Iguales / Negocio A / Negocio B', bold: true, bg: BG.label, color: COL.dim, locked: true },
-    answerCell(41, 5),
+    qLabel(37, '9. Las ventas del negocio A son $2.000.000/semana y del B $4.000.000. La rentabilidad de A es 20% y la de B 10%. ¿Cuál ganó más?'),
+    { r: 38, c: 4, v: '',            bg: BG.data, locked: true },
+    { r: 38, c: 5, v: 'Negocio A',   bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
+    { r: 38, c: 6, v: 'Negocio B',   bold: true, bg: BG.subhead, color: COL.dim, locked: true, align: 'center' },
+    { r: 39, c: 4, v: 'Ventas semanales', bg: BG.data, color: COL.text, locked: true },
+    { r: 39, c: 5, v: 2000000, bg: BG.data, color: COL.orange, locked: true, format: 'currency' },
+    { r: 39, c: 6, v: 4000000, bg: BG.data, color: COL.orange, locked: true, format: 'currency' },
+    { r: 40, c: 4, v: 'Rentabilidad', bg: BG.data, color: COL.text, locked: true },
+    { r: 40, c: 5, v: 0.20, bg: BG.data, color: COL.orange, locked: true, format: 'percent' },
+    { r: 40, c: 6, v: 0.10, bg: BG.data, color: COL.orange, locked: true, format: 'percent' },
+    { r: 41, c: 4, v: 'Ganancia', bg: BG.data, color: COL.text, locked: true },
+    answerCell(41, 5),  // candidate calculates: Ventas A × Rentabilidad A
+    answerCell(41, 6),  // candidate calculates: Ventas B × Rentabilidad B
+    { r: 42, c: 4, v: '→ ¿Cuál ganó más? Escribe: Iguales / Negocio A / Negocio B', bold: true, bg: BG.label, color: COL.dim, locked: true },
+    answerCell(42, 5),
   ]
 }
 
@@ -181,7 +177,7 @@ export const VERSION_A: SpreadsheetVersion = {
     ...menuCells(),
 
     // ── Section divider ──
-    { r: 7, c: 4, v: 'PREGUNTAS — escribe tus fórmulas en las celdas de color azul', bold: true, color: COL.accent, bg: BG.header, align: 'left' },
+    { r: 7, c: 4, v: 'PREGUNTAS — escribe tus respuestas en las celdas amarillas', bold: true, color: COL.accent, bg: BG.header, align: 'left' },
 
     // Q1
     qLabel(8,  '1. ¿Si vendieras 4 hamburguesas, de cuánto serían tus ingresos?'),
@@ -232,8 +228,8 @@ export const VERSION_A: SpreadsheetVersion = {
     { r: 22, c: 7, expected: 0.25,      questionNum: 5, label: 'Descuento % pizzas',              format: 'percent',  tolerance: 0.001 },
     { r: 25, c: 4, expected: 56700,     questionNum: 6, label: 'Ganancia 3 perros + 2 burgers',   format: 'currency' },
     { r: 27, c: 4, expected: 15,        questionNum: 7, label: 'Llamadas diarias',                format: 'number' },
-    { r: 34, c: 8, expected: 3.5,       questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
-    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
+    { r: 35, c: 8, expected: 3.5,       questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
+    { r: 42, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
   ],
 }
 
@@ -245,7 +241,7 @@ export const VERSION_B: SpreadsheetVersion = {
   cells: [
     ...menuCells(),
 
-    { r: 7, c: 4, v: 'PREGUNTAS — escribe tus fórmulas en las celdas de color azul', bold: true, color: COL.accent, bg: BG.header, align: 'left' },
+    { r: 7, c: 4, v: 'PREGUNTAS — escribe tus respuestas en las celdas amarillas', bold: true, color: COL.accent, bg: BG.header, align: 'left' },
 
     // Q1 — 3 hamburguesas
     qLabel(8,  '1. ¿Si vendieras 3 hamburguesas, de cuánto serían tus ingresos?'),
@@ -296,8 +292,8 @@ export const VERSION_B: SpreadsheetVersion = {
     { r: 22, c: 7, expected: 0.30,      questionNum: 5, label: 'Descuento % pizzas',              format: 'percent',  tolerance: 0.001 },
     { r: 25, c: 4, expected: 81900,     questionNum: 6, label: 'Ganancia 3 perros + 4 burgers',   format: 'currency' },
     { r: 27, c: 4, expected: 12,        questionNum: 7, label: 'Llamadas diarias',                format: 'number' },
-    { r: 34, c: 8, expected: 3.655,     questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
-    { r: 41, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
+    { r: 35, c: 8, expected: 3.655,     questionNum: 8, label: 'Promedio ponderado',              format: 'decimal',  tolerance: 0.05 },
+    { r: 42, c: 5, expected: 'Iguales', questionNum: 9, label: '¿Cuál negocio ganó más?',        format: 'text',     isText: true },
   ],
 }
 

@@ -76,6 +76,7 @@ const navItems = [
       { href: '/admin/rubric/caso', label: 'Caso Práctico', icon: '📊', color: 'var(--blue)', colorBg: 'rgba(67,97,238,.12)', colorBorder: 'rgba(67,97,238,.25)' },
       { href: '/admin/rubric/sharktank', label: 'SharkTank', icon: '🦈', color: 'var(--red)', colorBg: 'rgba(233,69,96,.1)', colorBorder: 'rgba(233,69,96,.25)' },
       { href: '/admin/rubric/roleplay', label: 'RolePlay', icon: '📞', color: 'var(--teal)', colorBg: 'rgba(6,214,160,.1)', colorBorder: 'rgba(6,214,160,.25)' },
+      { href: '/admin/rubric/culturalfit', label: 'Cultural Fit', icon: '🎙', color: '#a855f7', colorBg: 'rgba(168,85,247,.1)', colorBorder: 'rgba(168,85,247,.25)' },
     ],
   },
   {
@@ -83,6 +84,13 @@ const navItems = [
     label: 'Role Play',
     exact: true,
     icon: <span style={{ fontSize: 16, lineHeight: 1 }}>📞</span>,
+    children: null,
+  },
+  {
+    href: '/admin/cultural-fit',
+    label: 'Cultural Fit',
+    exact: true,
+    icon: <span style={{ fontSize: 16, lineHeight: 1 }}>🎙</span>,
     children: null,
   },
   {

@@ -2,19 +2,21 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Cohort, CasoMode, RoleplayCase, RoleplayStrategy } from '@/types/assessment'
+import type { Cohort, CasoMode, RoleplayBankMode } from '@/types/assessment'
 
 type MathModeOverride = 'global' | 'questions' | 'spreadsheet'
-type VoiceProviderOverride = 'global' | 'vapi' | 'arbol'
 
 type CaseSummary = { id: string; title: string; difficulty: string }
+type RpBankSummary = { id: string; restaurant_name: string; difficulty: string }
 
-const DIFFICULTY_OPTIONS = ['Baja', 'Baja-Media', 'Media', 'Media-Alta', 'Alta', 'Muy Alta']
+const DIFFICULTY_OPTIONS    = ['Baja', 'Baja-Media', 'Media', 'Media-Alta', 'Alta', 'Muy Alta']
+const RP_DIFFICULTY_OPTIONS = ['Básica', 'Básica-Media', 'Media', 'Media-Alta', 'Alta']
 const SECTION_OPTIONS = [
-  { id: 'sharktank', label: 'SharkTank Pitch', icon: '🦈' },
-  { id: 'roleplay',  label: 'Role Play',       icon: '📞' },
-  { id: 'caso',      label: 'Caso Práctico',   icon: '📊' },
-  { id: 'math',      label: 'Taller de Math',  icon: '🧮' },
+  { id: 'sharktank',    label: 'SharkTank Pitch', icon: '🦈' },
+  { id: 'roleplay',     label: 'Role Play',        icon: '📞' },
+  { id: 'caso',         label: 'Caso Práctico',    icon: '📊' },
+  { id: 'math',         label: 'Taller de Math',   icon: '🧮' },
+  { id: 'cultural_fit', label: 'Cultural Fit',     icon: '🎙' },
 ]
 
 const difficultyColor = (d: string) => {
@@ -26,31 +28,7 @@ const difficultyColor = (d: string) => {
   return '#8b5cf6'
 }
 
-const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
-  restaurant_name: 'Heladería La Fiore',
-  owner_name: 'Valentina Ríos',
-  owner_gender: 'f',
-  city: 'Cali',
-  category: 'Helados',
-  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
-  ticket_avg: '$29.900',
-  orders_per_week: '~70–75',
-  inactive_time: '2+ meses',
-  strategies: [
-    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
-    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
-  ],
-  opportunities: [
-    'Los Ads solo gastan el 46% del presupuesto disponible (co-inversión Rappi 70%)',
-    'Campaña visible solo en Onces y Cena — horario ampliable',
-    'Cerrado los martes — posible día de apertura',
-    'Descuentos con 22X retorno — espacio para incrementar',
-  ],
-  sales_data: [50, 77, 61, 52, 76, 74, 74],
-  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
-}
-
-export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSummary[] }) {
+export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases: CaseSummary[]; rpCases: RpBankSummary[] }) {
   const [name, setName]                   = useState(cohort.name)
   const [description, setDescription]     = useState(cohort.description)
   const [isActive, setIsActive]           = useState(cohort.is_active)
@@ -62,51 +40,19 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
   const [casoMode, setCasoMode]           = useState<CasoMode>(cohort.caso_mode)
   const [fixedCasoId, setFixedCasoId]     = useState<string>(cohort.fixed_caso_id ?? '')
   const [diffFilter, setDiffFilter]       = useState<string>(cohort.difficulty_filter ?? '')
-  const [mathMode, setMathMode]           = useState<MathModeOverride>(cohort.math_mode_override ?? 'global')
-  const [voiceMode, setVoiceMode]         = useState<VoiceProviderOverride>(cohort.voice_provider_override ?? 'global')
-  const [saving, setSaving]               = useState(false)
-  const [flash, setFlash]                 = useState<string | null>(null)
-
-  // ── Roleplay case state ──────────────────────────────────────────────────
-  const initial = cohort.roleplay_case ?? DEFAULT_ROLEPLAY_CASE
-  const [rpOpen,          setRpOpen]          = useState(false)
-  const [rpRestaurant,    setRpRestaurant]    = useState(initial.restaurant_name)
-  const [rpOwner,         setRpOwner]         = useState(initial.owner_name)
-  const [rpGender,        setRpGender]        = useState<'f' | 'm'>(initial.owner_gender)
-  const [rpCity,          setRpCity]          = useState(initial.city)
-  const [rpCategory,      setRpCategory]      = useState(initial.category)
-  const [rpSchedule,      setRpSchedule]      = useState(initial.schedule)
-  const [rpTicket,        setRpTicket]        = useState(initial.ticket_avg)
-  const [rpOrders,        setRpOrders]        = useState(initial.orders_per_week)
-  const [rpInactive,      setRpInactive]      = useState(initial.inactive_time)
-  const [rpStrategies,    setRpStrategies]    = useState<RoleplayStrategy[]>(initial.strategies)
-  const [rpOpportunities, setRpOpportunities] = useState<string[]>(initial.opportunities)
-  const [rpSalesData,     setRpSalesData]     = useState<string>(initial.sales_data.join(', '))
-  const [rpSalesLabels,   setRpSalesLabels]   = useState<string>(initial.sales_labels.join(', '))
+  const [mathMode, setMathMode]             = useState<MathModeOverride>(cohort.math_mode_override ?? 'global')
+  const [rpBankMode, setRpBankMode]         = useState<RoleplayBankMode>(cohort.roleplay_bank_mode ?? 'global')
+  const [rpBankCaseId, setRpBankCaseId]     = useState<string>(cohort.fixed_roleplay_bank_id ?? '')
+  const [rpBankDiff, setRpBankDiff]         = useState<string>(cohort.roleplay_bank_difficulty_filter ?? '')
+  const [saving, setSaving]                 = useState(false)
+  const [flash, setFlash]                   = useState<string | null>(null)
 
   const toggleSection = (id: string) => {
     setSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
   }
 
-  const filteredCases = diffFilter
-    ? cases.filter(c => c.difficulty === diffFilter)
-    : cases
-
-  const buildRoleplayCase = (): RoleplayCase => ({
-    restaurant_name: rpRestaurant.trim(),
-    owner_name: rpOwner.trim(),
-    owner_gender: rpGender,
-    city: rpCity.trim(),
-    category: rpCategory.trim(),
-    schedule: rpSchedule.trim(),
-    ticket_avg: rpTicket.trim(),
-    orders_per_week: rpOrders.trim(),
-    inactive_time: rpInactive.trim(),
-    strategies: rpStrategies,
-    opportunities: rpOpportunities.filter(o => o.trim() !== ''),
-    sales_data: rpSalesData.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n)),
-    sales_labels: rpSalesLabels.split(',').map(s => s.trim()).filter(s => s !== ''),
-  })
+  const filteredCases   = diffFilter ? cases.filter(c => c.difficulty === diffFilter) : cases
+  const filteredRpCases = rpBankDiff  ? rpCases.filter(c => c.difficulty === rpBankDiff)  : rpCases
 
   const handleSave = async () => {
     setSaving(true)
@@ -124,9 +70,10 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           caso_mode:           casoMode,
           fixed_caso_id:       casoMode === 'fixed' ? (fixedCasoId || null) : null,
           difficulty_filter:   casoMode === 'random' ? (diffFilter || null) : null,
-          math_mode_override:       mathMode === 'global'  ? null : mathMode,
-          voice_provider_override:  voiceMode === 'global' ? null : voiceMode,
-          roleplay_case:       sections.includes('roleplay') ? buildRoleplayCase() : null,
+          math_mode_override:  mathMode === 'global' ? null : mathMode,
+          roleplay_bank_mode:              rpBankMode,
+          fixed_roleplay_bank_id:          rpBankMode === 'fixed'  ? (rpBankCaseId || null) : null,
+          roleplay_bank_difficulty_filter: rpBankMode === 'random' ? (rpBankDiff || null)    : null,
         })
         .eq('id', cohort.id)
       if (error) throw error
@@ -380,226 +327,95 @@ export function CohortEditor({ cohort, cases }: { cohort: Cohort; cases: CaseSum
           </div>
         )}
 
-        {/* Divider */}
-        <div style={{ height: 1, background: 'var(--border)' }} />
-
-        {/* Voice Provider */}
-        <div>
-          <label style={labelStyle}>Proveedor de Voz</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {([
-              { value: 'global', label: 'Usar config global',   desc: 'Lo que esté configurado en Settings' },
-              { value: 'vapi',   label: 'Vapi (browser)',       desc: 'Llamada en el navegador vía WebRTC' },
-              { value: 'arbol',  label: 'Arbol AI (llamada real)', desc: 'Llamada telefónica al candidato' },
-            ] as { value: VoiceProviderOverride; label: string; desc: string }[]).map(opt => (
-              <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <div
-                  onClick={() => setVoiceMode(opt.value)}
-                  style={{
-                    marginTop: 2,
-                    width: 16, height: 16, borderRadius: '50%',
-                    background: voiceMode === opt.value ? 'var(--blue)' : 'var(--input)',
-                    border: `1.5px solid ${voiceMode === opt.value ? 'var(--blue)' : 'var(--border-mid)'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
-                  }}
-                >
-                  {voiceMode === opt.value && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12.5, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>
-                    {opt.label}
-                  </div>
-                  <div style={{ fontSize: 11, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--muted)', marginTop: 1 }}>
-                    {opt.desc}
-                  </div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Roleplay Case section ─────────────────────────────────────────── */}
+        {/* ── Role Play Bank ─────────────────────────────────────────────── */}
         {sections.includes('roleplay') && (
           <>
             <div style={{ height: 1, background: 'var(--border)' }} />
             <div>
-              {/* Toggle header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: rpOpen ? 16 : 0 }}>
-                <span style={{ ...sectionLabelStyle, fontSize: 11, color: 'var(--text)' }}>🎭 Caso de Role Play</span>
-                <button
-                  onClick={() => setRpOpen(v => !v)}
-                  style={{
-                    background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)',
-                    borderRadius: 6, color: 'var(--muted)', fontFamily: 'JetBrains Mono, Space Mono, monospace',
-                    fontSize: 10, letterSpacing: '.5px', padding: '4px 10px', cursor: 'pointer',
-                  }}
-                >
-                  {rpOpen ? 'Ocultar ↑' : 'Configurar ↓'}
-                </button>
-              </div>
-
-              {rpOpen && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-                  {/* ── Restaurante ── */}
-                  <div style={{ ...sectionLabelStyle, marginBottom: 6 }}>Restaurante</div>
-
-                  <div>
-                    <label style={labelStyle}>Nombre del restaurante</label>
-                    <input value={rpRestaurant} onChange={e => setRpRestaurant(e.target.value)} style={inputStyle} placeholder="ej. Heladería La Fiore" />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
-                    <div>
-                      <label style={labelStyle}>Nombre del dueño/a</label>
-                      <input value={rpOwner} onChange={e => setRpOwner(e.target.value)} style={inputStyle} placeholder="ej. Valentina Ríos" />
+              <label style={labelStyle}>📞 Caso de Role Play</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 12 }}>
+                {([
+                  { value: 'global', label: 'Usar config global',      desc: 'El caso activo en el panel de Role Play' },
+                  { value: 'fixed',  label: 'Caso fijo (todos igual)',  desc: 'Mismo caso del banco para todos' },
+                  { value: 'random', label: 'Random por dificultad',   desc: 'Se asigna al azar al momento de entrar' },
+                ] as { value: RoleplayBankMode; label: string; desc: string }[]).map(opt => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <div
+                      onClick={() => setRpBankMode(opt.value)}
+                      style={{
+                        marginTop: 3,
+                        width: 16, height: 16, borderRadius: '50%',
+                        background: rpBankMode === opt.value ? 'var(--blue)' : 'var(--input)',
+                        border: `1.5px solid ${rpBankMode === opt.value ? 'var(--blue)' : 'var(--border-mid)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', flexShrink: 0, transition: 'all .15s',
+                      }}
+                    >
+                      {rpBankMode === opt.value && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff' }} />}
                     </div>
                     <div>
-                      <label style={labelStyle}>Género</label>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {(['f', 'm'] as const).map(g => (
-                          <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>
-                            <div
-                              onClick={() => setRpGender(g)}
-                              style={{
-                                width: 14, height: 14, borderRadius: '50%',
-                                background: rpGender === g ? 'var(--blue)' : 'var(--input)',
-                                border: `1.5px solid ${rpGender === g ? 'var(--blue)' : 'var(--border-mid)'}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                cursor: 'pointer', flexShrink: 0,
-                              }}
-                            >
-                              {rpGender === g && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
-                            </div>
-                            {g === 'f' ? 'Dueña' : 'Dueño'}
-                          </label>
+                      <div style={{ fontSize: 12.5, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--dim)' }}>{opt.label}</div>
+                      <div style={{ fontSize: 11, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--muted)', marginTop: 1 }}>{opt.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {/* Fixed: pick a specific bank case */}
+              {rpBankMode === 'fixed' && (
+                <div style={{ marginTop: 8 }}>
+                  <label style={labelStyle}>Caso seleccionado</label>
+                  <select
+                    value={rpBankCaseId}
+                    onChange={e => setRpBankCaseId(e.target.value)}
+                    style={{ ...inputStyle, fontSize: 12.5 }}
+                  >
+                    <option value="">— Selecciona un caso —</option>
+                    {rpCases.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.restaurant_name} ({c.difficulty})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Random: difficulty filter */}
+              {rpBankMode === 'random' && (
+                <div>
+                  <label style={labelStyle}>Filtrar por dificultad</label>
+                  <select
+                    value={rpBankDiff}
+                    onChange={e => setRpBankDiff(e.target.value)}
+                    style={{ ...inputStyle, fontSize: 12.5 }}
+                  >
+                    <option value="">Todas las dificultades</option>
+                    {RP_DIFFICULTY_OPTIONS.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+
+                  {/* Preview pool */}
+                  {filteredRpCases.length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', marginBottom: 7 }}>
+                        Pool ({filteredRpCases.length} caso{filteredRpCases.length !== 1 ? 's' : ''})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {filteredRpCases.map(c => (
+                          <span key={c.id} style={{
+                            fontSize: 10.5, fontFamily: 'Inter, DM Sans, sans-serif',
+                            padding: '3px 9px', borderRadius: 100,
+                            background: 'rgba(255,255,255,.04)',
+                            border: '1px solid var(--border)',
+                            color: difficultyColor(c.difficulty),
+                          }}>
+                            {c.restaurant_name}
+                          </span>
                         ))}
                       </div>
                     </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div>
-                      <label style={labelStyle}>Ciudad</label>
-                      <input value={rpCity} onChange={e => setRpCity(e.target.value)} style={inputStyle} placeholder="ej. Cali" />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Categoría</label>
-                      <input value={rpCategory} onChange={e => setRpCategory(e.target.value)} style={inputStyle} placeholder="ej. Helados" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Horario</label>
-                    <input value={rpSchedule} onChange={e => setRpSchedule(e.target.value)} style={inputStyle} placeholder="ej. Lun–Dom · 12:00 pm – 10:00 pm" />
-                  </div>
-
-                  {/* ── Métricas clave ── */}
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-                  <div style={sectionLabelStyle}>Métricas clave</div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                    <div>
-                      <label style={labelStyle}>Ticket promedio</label>
-                      <input value={rpTicket} onChange={e => setRpTicket(e.target.value)} style={inputStyle} placeholder="$29.900" />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Pedidos/semana</label>
-                      <input value={rpOrders} onChange={e => setRpOrders(e.target.value)} style={inputStyle} placeholder="~70–75" />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Tiempo sin cambios</label>
-                      <input value={rpInactive} onChange={e => setRpInactive(e.target.value)} style={inputStyle} placeholder="2+ meses" />
-                    </div>
-                  </div>
-
-                  {/* ── Estrategias ── */}
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={sectionLabelStyle}>Estrategias activas (máx 4)</span>
-                    {rpStrategies.length < 4 && (
-                      <button
-                        onClick={() => setRpStrategies(prev => [...prev, { name: '', roi: '', status: 'active' }])}
-                        style={{ background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--dim)', fontFamily: 'Inter, DM Sans, sans-serif', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}
-                      >
-                        + Agregar
-                      </button>
-                    )}
-                  </div>
-
-                  {rpStrategies.map((s, i) => (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr 2fr auto', gap: 8, alignItems: 'end' }}>
-                      <div>
-                        {i === 0 && <label style={labelStyle}>Nombre</label>}
-                        <input value={s.name} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} style={inputStyle} placeholder="Descuentos 5% + PRO" />
-                      </div>
-                      <div>
-                        {i === 0 && <label style={labelStyle}>ROI</label>}
-                        <input value={s.roi} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, roi: e.target.value } : x))} style={inputStyle} placeholder="22X" />
-                      </div>
-                      <div>
-                        {i === 0 && <label style={labelStyle}>Estado</label>}
-                        <select value={s.status} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, status: e.target.value as RoleplayStrategy['status'] } : x))} style={{ ...inputStyle, fontSize: 12 }}>
-                          <option value="active">Activo</option>
-                          <option value="underused">Subutilizado</option>
-                          <option value="inactive">Inactivo</option>
-                        </select>
-                      </div>
-                      <div>
-                        {i === 0 && <label style={labelStyle}>Nota (opcional)</label>}
-                        <input value={s.note ?? ''} onChange={e => setRpStrategies(prev => prev.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} style={inputStyle} placeholder="ej. ROI 22X activo" />
-                      </div>
-                      <button
-                        onClick={() => setRpStrategies(prev => prev.filter((_, j) => j !== i))}
-                        style={{ background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.3)', borderRadius: 6, color: '#ff6b6b', fontSize: 14, width: 32, height: 38, cursor: 'pointer', marginTop: i === 0 ? 16 : 0, flexShrink: 0 }}
-                        title="Eliminar"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* ── Oportunidades ── */}
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={sectionLabelStyle}>Oportunidades detectadas (máx 6)</span>
-                    {rpOpportunities.length < 6 && (
-                      <button
-                        onClick={() => setRpOpportunities(prev => [...prev, ''])}
-                        style={{ background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--dim)', fontFamily: 'Inter, DM Sans, sans-serif', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}
-                      >
-                        + Agregar
-                      </button>
-                    )}
-                  </div>
-
-                  {rpOpportunities.map((opp, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input value={opp} onChange={e => setRpOpportunities(prev => prev.map((x, j) => j === i ? e.target.value : x))} style={{ ...inputStyle, flex: 1 }} placeholder={`Oportunidad ${i + 1}`} />
-                      <button
-                        onClick={() => setRpOpportunities(prev => prev.filter((_, j) => j !== i))}
-                        style={{ background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.3)', borderRadius: 6, color: '#ff6b6b', fontSize: 14, width: 32, height: 38, cursor: 'pointer', flexShrink: 0 }}
-                        title="Eliminar"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* ── Historial de ventas ── */}
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-                  <div style={sectionLabelStyle}>Historial de ventas</div>
-
-                  <div>
-                    <label style={labelStyle}>Valores (7, separados por coma)</label>
-                    <input value={rpSalesData} onChange={e => setRpSalesData(e.target.value)} style={inputStyle} placeholder="50, 77, 61, 52, 76, 74, 74" />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Etiquetas (7, separadas por coma)</label>
-                    <input value={rpSalesLabels} onChange={e => setRpSalesLabels(e.target.value)} style={inputStyle} placeholder="Oct W1, Oct W2, Oct W3, Nov W1, Nov W2, Nov W3, Nov W4" />
-                  </div>
-
+                  )}
                 </div>
               )}
             </div>

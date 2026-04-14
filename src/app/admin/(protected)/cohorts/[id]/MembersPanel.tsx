@@ -2,39 +2,22 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import type { CohortMember } from '@/types/assessment'
-
-type CaseSummary = { id: string; title: string; difficulty: string }
-
-const difficultyColor = (d: string | null) => {
-  if (!d) return 'var(--muted)'
-  if (d === 'Baja')       return '#00d68a'
-  if (d === 'Baja-Media') return 'var(--teal)'
-  if (d === 'Media')      return 'var(--gold)'
-  if (d === 'Media-Alta') return '#f59e0b'
-  if (d === 'Alta')       return 'var(--red)'
-  return '#8b5cf6'
-}
 
 export function MembersPanel({
   cohortId,
   members,
-  cases,
 }: {
   cohortId: string
-  members: (CohortMember & { caso_title?: string | null; caso_difficulty?: string | null })[]
-  cases: CaseSummary[]
+  members: CohortMember[]
 }) {
-  const [list, setList] = useState(members)
+  const [list, setList] = useState<CohortMember[]>(members)
   const [singleEmail, setSingleEmail] = useState('')
   const [bulkEmails, setBulkEmails]   = useState('')
   const [mode, setMode]               = useState<'single' | 'bulk' | null>(null)
   const [saving, setSaving]           = useState(false)
   const [flash, setFlash]             = useState<string | null>(null)
   const [sending, setSending]         = useState<string | null>(null) // email being sent, or 'all'
-  const router = useRouter()
-
   const showFlash = (msg: string) => {
     setFlash(msg)
     setTimeout(() => setFlash(null), 3000)
@@ -53,7 +36,7 @@ export function MembersPanel({
         .select('*')
         .single()
       if (error) throw error
-      setList(prev => [{ ...data, caso_title: null, caso_difficulty: null }, ...prev])
+      setList(prev => [data, ...prev])
       setSingleEmail('')
       setMode(null)
       showFlash('Candidato agregado')
@@ -81,8 +64,7 @@ export function MembersPanel({
         .insert(rows)
         .select('*')
       if (error) throw error
-      const enriched = (data ?? []).map(m => ({ ...m, caso_title: null, caso_difficulty: null }))
-      setList(prev => [...enriched, ...prev])
+      setList(prev => [...(data ?? []), ...prev])
       setBulkEmails('')
       setMode(null)
       showFlash(`${newEmails.length} candidato${newEmails.length !== 1 ? 's' : ''} agregado${newEmails.length !== 1 ? 's' : ''}`)
@@ -124,24 +106,6 @@ export function MembersPanel({
       setList(prev => prev.filter(m => m.id !== memberId))
     } catch {
       showFlash('Error al eliminar')
-    }
-  }
-
-  const reassignCase = async (memberId: string, casoId: string) => {
-    try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('cohort_members')
-        .update({ assigned_caso_id: casoId || null })
-        .eq('id', memberId)
-      if (error) throw error
-      const caseData = cases.find(c => c.id === casoId)
-      setList(prev => prev.map(m => m.id === memberId
-        ? { ...m, assigned_caso_id: casoId || null, caso_title: caseData?.title ?? null, caso_difficulty: caseData?.difficulty ?? null }
-        : m
-      ))
-    } catch {
-      showFlash('Error al reasignar')
     }
   }
 
@@ -293,22 +257,21 @@ export function MembersPanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {/* Header row */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+            display: 'grid', gridTemplateColumns: '1fr auto auto',
             gap: 8, padding: '6px 4px',
             fontSize: 9.5, fontFamily: 'JetBrains Mono, Space Mono, monospace',
             textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)',
             borderBottom: '1px solid var(--border)', marginBottom: 4,
           }}>
             <span>Email</span>
-            <span style={{ textAlign: 'center', minWidth: 90 }}>Caso</span>
-            <span style={{ minWidth: 36 }}></span>
+            <span style={{ minWidth: 110 }}></span>
             <span style={{ minWidth: 24 }}></span>
           </div>
           {list.map((m, i) => (
             <div
               key={m.id}
               style={{
-                display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+                display: 'grid', gridTemplateColumns: '1fr auto auto',
                 gap: 8, padding: '9px 4px', alignItems: 'center',
                 borderBottom: i < list.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
               }}
@@ -324,79 +287,34 @@ export function MembersPanel({
                 </div>
               </div>
 
-              {/* Case selector */}
-              <div style={{ minWidth: 90 }}>
-                {m.assigned_caso_id ? (
-                  <div style={{ position: 'relative' }}>
-                    <span style={{
-                      fontSize: 10, fontFamily: 'JetBrains Mono, Space Mono, monospace',
-                      color: difficultyColor(m.caso_difficulty ?? null),
-                      display: 'block', maxWidth: 130, overflow: 'hidden',
-                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      cursor: 'default',
-                    }}
-                    title={m.caso_title ?? m.assigned_caso_id}
-                    >
-                      {m.caso_title ?? '—'}
-                    </span>
-                    <select
-                      value={m.assigned_caso_id}
-                      onChange={e => reassignCase(m.id, e.target.value)}
-                      style={{
-                        position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%',
-                      }}
-                    >
-                      <option value="">— Sin caso —</option>
-                      {cases.map(c => (
-                        <option key={c.id} value={c.id}>{c.title}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <select
-                    value=""
-                    onChange={e => reassignCase(m.id, e.target.value)}
-                    style={{
-                      padding: '3px 7px', fontSize: 10.5,
-                      background: 'var(--input)', border: '1px solid var(--border)',
-                      borderRadius: 6, color: 'var(--muted)',
-                      fontFamily: 'Inter, DM Sans, sans-serif', cursor: 'pointer',
-                    }}
-                  >
-                    <option value="">Sin asignar</option>
-                    {cases.map(c => (
-                      <option key={c.id} value={c.id}>{c.title}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Send invite */}
+              {/* Send assessment */}
               <button
                 onClick={() => sendInvite([m.email])}
                 disabled={sending === m.email}
-                title="Enviar invitación"
+                title="Enviar assessment"
                 style={{
-                  width: 28, height: 28, borderRadius: 6,
-                  background: 'transparent', border: '1px solid transparent',
-                  color: 'var(--muted)', cursor: sending === m.email ? 'not-allowed' : 'pointer',
-                  fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all .15s', opacity: sending === m.email ? 0.5 : 1,
+                  padding: '5px 12px', fontSize: 11,
+                  fontFamily: 'Inter, DM Sans, sans-serif',
+                  background: sending === m.email ? 'rgba(0,214,138,.05)' : 'rgba(0,214,138,.08)',
+                  border: '1px solid rgba(0,214,138,.2)',
+                  color: '#00d68a', borderRadius: 7,
+                  cursor: sending === m.email ? 'not-allowed' : 'pointer',
+                  opacity: sending === m.email ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                  transition: 'all .15s',
                 }}
                 onMouseEnter={e => {
                   if (sending !== m.email) {
-                    (e.currentTarget).style.color = '#8098f8'
-                    ;(e.currentTarget).style.borderColor = 'rgba(61,85,232,.3)'
-                    ;(e.currentTarget).style.background = 'rgba(61,85,232,.08)'
+                    (e.currentTarget).style.background = 'rgba(0,214,138,.14)'
+                    ;(e.currentTarget).style.borderColor = 'rgba(0,214,138,.35)'
                   }
                 }}
                 onMouseLeave={e => {
-                  (e.currentTarget).style.color = 'var(--muted)'
-                  ;(e.currentTarget).style.borderColor = 'transparent'
-                  ;(e.currentTarget).style.background = 'transparent'
+                  (e.currentTarget).style.background = 'rgba(0,214,138,.08)'
+                  ;(e.currentTarget).style.borderColor = 'rgba(0,214,138,.2)'
                 }}
               >
-                {sending === m.email ? '…' : '✉'}
+                {sending === m.email ? 'Enviando...' : '✉ Enviar assessment'}
               </button>
 
               {/* Remove */}

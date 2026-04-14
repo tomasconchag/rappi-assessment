@@ -14,6 +14,10 @@ import { RolePlayIntroScreen } from './screens/RolePlayIntroScreen'
 import { RolePlayPrepScreen } from './screens/RolePlayPrepScreen'
 import { RolePlayCallScreen } from './screens/RolePlayCallScreen'
 import { RolePlayDoneScreen } from './screens/RolePlayDoneScreen'
+import { CulturalFitIntroScreen } from './screens/CulturalFitIntroScreen'
+import { CulturalFitPrepScreen } from './screens/CulturalFitPrepScreen'
+import { CulturalFitCallScreen } from './screens/CulturalFitCallScreen'
+import { CulturalFitDoneScreen } from './screens/CulturalFitDoneScreen'
 import { CasoIntroScreen } from './screens/CasoIntroScreen'
 import { CasoQuestionScreen } from './screens/CasoQuestionScreen'
 import { MathIntroScreen } from './screens/MathIntroScreen'
@@ -59,6 +63,10 @@ function buildScreenToStep(enabled: string[]): Record<string, number> {
     ;['math_intro', 'math_question'].forEach(s => { map[s] = step })
     step++
   }
+  if (enabled.includes('cultural_fit')) {
+    ;['cultural_fit_intro', 'cultural_fit_prep', 'cultural_fit_call', 'cultural_fit_done'].forEach(s => { map[s] = step })
+    step++
+  }
   map['completion'] = step
   return map
 }
@@ -77,10 +85,18 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const snapVideoRef    = useRef<HTMLVideoElement | null>(null)
   const startTimeRef    = useRef<number | null>(null)
   // Roleplay screen recording — started on prep screen, stopped when call ends
-  const roleRecorderRef     = useRef<MediaRecorder | null>(null)
-  const roleChunksRef       = useRef<Blob[]>([])
-  const roleMimeRef         = useRef('video/webm')
-  const roleCameraStreamRef = useRef<MediaStream | null>(null)
+  const roleRecorderRef      = useRef<MediaRecorder | null>(null)
+  const roleChunksRef        = useRef<Blob[]>([])
+  const roleMimeRef          = useRef('video/webm')
+  const roleCameraStreamRef  = useRef<MediaStream | null>(null)
+  const roleScreenStreamRef  = useRef<MediaStream | null>(null)
+  const vapiCallIdRef        = useRef<string | null>(null)  // set by RolePlayCallScreen
+  // Cultural Fit screen recording
+  const cfRecorderRef      = useRef<MediaRecorder | null>(null)
+  const cfChunksRef        = useRef<Blob[]>([])
+  const cfMimeRef          = useRef('video/webm')
+  const cfCameraStreamRef  = useRef<MediaStream | null>(null)
+  const cfScreenStreamRef  = useRef<MediaStream | null>(null)
   // Voice provider state
   const [candidatePhone, setCandidatePhone] = useState<string>('')
   // Roleplay case (injected from cohort)
@@ -102,6 +118,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     ...(enabled.includes('roleplay') ? ['Role Play'] : []),
     ...(enabled.includes('caso') ? ['Caso'] : []),
     ...(enabled.includes('math') ? ['Math'] : []),
+    ...(enabled.includes('cultural_fit') ? ['Cultural Fit'] : []),
     'Listo',
   ]
   const stepColors = [
@@ -109,6 +126,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     ...(enabled.includes('roleplay') ? ['#f59e0b'] : []),
     ...(enabled.includes('caso') ? ['var(--blue)'] : []),
     ...(enabled.includes('math') ? ['var(--teal)'] : []),
+    ...(enabled.includes('cultural_fit') ? ['#a855f7'] : []),
     'var(--green)',
   ]
   const screenToStep = buildScreenToStep(enabled)
@@ -142,6 +160,31 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     }, 3000)
     return () => clearInterval(interval)
   }, [state.screen, proctor])
+
+  // ── Safeguard: force-stop screen recording when leaving roleplay/cultural-fit screens ──
+  // This fires on every screen change. If the primary stop mechanism already ran, the refs
+  // are null and this is a no-op. If it didn't (any failure path), this cleans up.
+  useEffect(() => {
+    const screen = state.screen
+    const isRoleplayScreen = screen === 'roleplay_prep' || screen === 'roleplay_call'
+    const isCfScreen       = screen === 'cultural_fit_prep' || screen === 'cultural_fit_call'
+
+    if (!isRoleplayScreen) {
+      roleScreenStreamRef.current?.getTracks().forEach(t => t.stop())
+      roleScreenStreamRef.current = null
+      if (roleRecorderRef.current && roleRecorderRef.current.state !== 'inactive') {
+        try { roleRecorderRef.current.stop() } catch { /* ignore */ }
+      }
+    }
+
+    if (!isCfScreen) {
+      cfScreenStreamRef.current?.getTracks().forEach(t => t.stop())
+      cfScreenStreamRef.current = null
+      if (cfRecorderRef.current && cfRecorderRef.current.state !== 'inactive') {
+        try { cfRecorderRef.current.stop() } catch { /* ignore */ }
+      }
+    }
+  }, [state.screen])
 
   // Start elapsed timer when assessment begins (shark_intro onwards)
   useEffect(() => {
@@ -206,15 +249,17 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     if (enabledSections.includes('sharktank')) dispatch({ type: 'GO_SCREEN', screen: 'shark_intro' })
     else if (enabledSections.includes('roleplay')) dispatch({ type: 'GO_SCREEN', screen: 'roleplay_intro' })
     else if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
-    else dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
+    else if (enabledSections.includes('math')) dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
+    else if (enabledSections.includes('cultural_fit')) dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
+    else dispatch({ type: 'GO_SCREEN', screen: 'completion' })
   }, [goFullscreen, initSnapshots, dispatch, config])
 
   const handleCandidateSubmit = useCallback(async (candidate: CandidateInfo) => {
     dispatch({ type: 'SET_CANDIDATE', candidate })
 
-    // If a cohort token is present and the caso_bank_entry wasn't resolved server-side
-    // (happens for non-Clerk users), do the assignment now that we have the email.
-    if (cohortToken && !liveConfig.caso_bank_entry) {
+    // Always call cohort-assign when a token is present — it returns roleplayBankCase,
+    // casoBankEntry, and enabledSections. This is idempotent (upserts the member row).
+    if (cohortToken) {
       try {
         const res = await fetch('/api/cohort-assign', {
           method: 'POST',
@@ -291,7 +336,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       correct = ssResult.correct; total = ssResult.total; mathPct = ssResult.pct
       mathTimeSecs  = 600 - secsLeft   // seconds used
       honeypotFails = 0
-      details = ssResult.details.map((d, i) => ({ idx: i, correct: d.correct, pointsAwarded: d.correct ? 1 : 0 }))
+      details = ssResult.details.map((d, i) => ({ idx: i, correct: d.correct, pointsAwarded: d.correct ? 1 : 0, got: d.got }))
     } else {
       const mathQs = liveConfig.questions.filter(q => q.section === 'math').sort((a, b) => a.position - b.position)
       const r = scoreMath(mathQs, state.mathAnswers)
@@ -358,6 +403,25 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         }
       }
 
+      let culturalFitVideoPath: string | null = null
+      if (state.culturalFitVideoBlob) {
+        try {
+          const cfUploadRes = await fetch('/api/video-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidateEmail: state.candidate.email, mimeType: state.culturalFitVideoMimeType, section: 'cultural_fit' }),
+          })
+          if (cfUploadRes.ok) {
+            const { signedUrl, path } = await cfUploadRes.json()
+            const baseCfMime = state.culturalFitVideoMimeType.split(';')[0] || 'video/webm'
+            const putRes = await fetch(signedUrl, { method: 'PUT', body: state.culturalFitVideoBlob, headers: { 'Content-Type': baseCfMime } })
+            if (putRes.ok) culturalFitVideoPath = path
+          }
+        } catch (uploadErr) {
+          console.error('Cultural fit video upload error:', uploadErr)
+        }
+      }
+
       const snapshotResults = await Promise.all(
         proctoringData.snapshots.map(async (snap, i) => {
           try {
@@ -383,7 +447,9 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         candidate: state.candidate, configId: liveConfig.id,
         clerkUserId: clerkUser?.id ?? null,
         videoPath, videoMimeType: state.videoMimeType, videoRecorded: state.videoRecorded,
-        roleplayCompleted: state.roleplayCompleted, roleplayVideoPath,
+        roleplayCompleted: state.roleplayCompleted, roleplayVideoPath, roleplayTranscript: state.roleplayTranscript,
+        roleplayBankCaseId: roleplayBankCase?.id ?? null,
+        culturalFitCompleted: state.culturalFitCompleted, culturalFitVideoPath,
         mathScoreRaw: correct, mathScoreTotal: total, mathScorePct: mathPct,
         mathTimeSecs,
         casoAnsweredCount: answered, casoScorePct: casoPct, overallScorePct: overall,
@@ -461,6 +527,70 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     }
   }, [state, config, proctor, dispatch])
 
+  const handleCulturalFitStart = useCallback(() => {
+    dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_prep' })
+  }, [dispatch])
+
+  const handleCulturalFitCallStart = useCallback((
+    recorder: MediaRecorder,
+    chunks: Blob[],
+    mimeType: string,
+    cameraStream: MediaStream | null,
+    screenStream: MediaStream | null,
+  ) => {
+    cfRecorderRef.current      = recorder
+    cfChunksRef.current        = chunks
+    cfMimeRef.current          = mimeType
+    cfCameraStreamRef.current  = cameraStream
+    cfScreenStreamRef.current  = screenStream
+    dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_call' })
+  }, [dispatch])
+
+  const handleCulturalFitDone = useCallback(() => {
+    const recorder = cfRecorderRef.current
+
+    const collectAndFinish = () => {
+      const blob = cfChunksRef.current.length > 0
+        ? new Blob(cfChunksRef.current, { type: cfMimeRef.current })
+        : null
+      dispatch({ type: 'SET_CULTURAL_FIT_DONE', videoBlob: blob, mimeType: cfMimeRef.current })
+      dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_done' })
+    }
+
+    const stopAllTracks = () => {
+      // Stop camera/mic tracks
+      cfCameraStreamRef.current?.getTracks().forEach(t => t.stop())
+      cfCameraStreamRef.current = null
+      // Stop screen capture directly via stored ref (most reliable cross-browser)
+      cfScreenStreamRef.current?.getTracks().forEach(t => t.stop())
+      cfScreenStreamRef.current = null
+      // Also stop via recorder.stream as belt-and-suspenders
+      recorder?.stream?.getTracks().forEach(t => t.stop())
+    }
+
+    if (recorder && recorder.state !== 'inactive') {
+      let finished = false
+      recorder.onstop = () => {
+        if (finished) return
+        finished = true
+        stopAllTracks()
+        collectAndFinish()
+      }
+      setTimeout(() => {
+        if (!finished) { finished = true; stopAllTracks(); collectAndFinish() }
+      }, 3000)
+      try { recorder.stop() } catch { if (!finished) { finished = true; stopAllTracks(); collectAndFinish() } }
+    } else {
+      stopAllTracks()
+      collectAndFinish()
+    }
+  }, [dispatch])
+
+  const handleCulturalFitNext = useCallback(() => {
+    dispatch({ type: 'GO_SCREEN', screen: 'completion' })
+    submitAll()
+  }, [dispatch, submitAll])
+
   const handleRolePlayStart = useCallback(() => {
     dispatch({ type: 'GO_SCREEN', screen: 'roleplay_prep' })
   }, [dispatch])
@@ -471,31 +601,63 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     chunks: Blob[],
     mimeType: string,
     cameraStream: MediaStream | null,
+    screenStream: MediaStream | null,
   ) => {
-    roleRecorderRef.current     = recorder
-    roleChunksRef.current       = chunks   // same array reference — new chunks keep accumulating
-    roleMimeRef.current         = mimeType
-    roleCameraStreamRef.current = cameraStream
+    roleRecorderRef.current      = recorder
+    roleChunksRef.current        = chunks   // same array reference — new chunks keep accumulating
+    roleMimeRef.current          = mimeType
+    roleCameraStreamRef.current  = cameraStream
+    roleScreenStreamRef.current  = screenStream
     dispatch({ type: 'GO_SCREEN', screen: 'roleplay_call' })
   }, [dispatch])
 
   // Called by RolePlayCallScreen when the 5-min call timer ends
-  const handleRolePlayDone = useCallback(() => {
+  const handleRolePlayDone = useCallback((vapiCallId?: string | null) => {
     const recorder = roleRecorderRef.current
+    // Store callId so we can fetch transcript
+    if (vapiCallId) vapiCallIdRef.current = vapiCallId
 
-    const collectAndFinish = () => {
+    const collectAndFinish = async () => {
       // Always collect whatever chunks we have, even if recorder stopped early
       const blob = roleChunksRef.current.length > 0
         ? new Blob(roleChunksRef.current, { type: roleMimeRef.current })
         : null
-      dispatch({ type: 'SET_ROLEPLAY_DONE', videoBlob: blob, mimeType: roleMimeRef.current })
+
+      // Fetch Vapi transcript (both sides) — poll up to 3 attempts with 5s delay.
+      // Vapi may need a few seconds to finalize the transcript after call-end.
+      let vapiTranscript: string | null = null
+      if (vapiCallIdRef.current) {
+        const callIdForTranscript = vapiCallIdRef.current
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 5000))
+            const res = await fetch(`/api/vapi-transcript?callId=${callIdForTranscript}`)
+            if (res.ok) {
+              const data = await res.json()
+              if (data.transcript) {
+                vapiTranscript = data.transcript
+                break // got it — stop polling
+              }
+            }
+          } catch {
+            // Non-fatal — transcript will be generated later via AssemblyAI
+          }
+        }
+      }
+
+      dispatch({ type: 'SET_ROLEPLAY_DONE', videoBlob: blob, mimeType: roleMimeRef.current, transcript: vapiTranscript })
       dispatch({ type: 'GO_SCREEN', screen: 'roleplay_done' })
     }
 
-    // Stop camera stream tracks regardless of recorder state
-    const stopCamera = () => {
+    // Stop ALL tracks: camera/mic + screen capture (releases "sharing screen" indicator)
+    const stopAllTracks = () => {
       roleCameraStreamRef.current?.getTracks().forEach(t => t.stop())
       roleCameraStreamRef.current = null
+      // Stop screen capture directly via stored ref (most reliable cross-browser)
+      roleScreenStreamRef.current?.getTracks().forEach(t => t.stop())
+      roleScreenStreamRef.current = null
+      // Also stop via recorder.stream as belt-and-suspenders
+      recorder?.stream?.getTracks().forEach(t => t.stop())
     }
 
     if (recorder && recorder.state !== 'inactive') {
@@ -503,18 +665,17 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       recorder.onstop = () => {
         if (finished) return
         finished = true
-        stopCamera()
+        stopAllTracks()
         collectAndFinish()
       }
       // Safety fallback: if onstop never fires within 3s, collect anyway
       setTimeout(() => {
-        if (!finished) { finished = true; stopCamera(); collectAndFinish() }
+        if (!finished) { finished = true; stopAllTracks(); collectAndFinish() }
       }, 3000)
-      try { recorder.stop() } catch { if (!finished) { finished = true; stopCamera(); collectAndFinish() } }
+      try { recorder.stop() } catch { if (!finished) { finished = true; stopAllTracks(); collectAndFinish() } }
     } else {
       // Recorder already stopped (e.g. user stopped screen share mid-call)
-      // Still collect any chunks that were recorded before it stopped
-      stopCamera()
+      stopAllTracks()
       collectAndFinish()
     }
   }, [dispatch])
@@ -523,6 +684,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math', 'roleplay']
     if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
     else if (enabledSections.includes('math')) dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
+    else if (enabledSections.includes('cultural_fit')) dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
     else { dispatch({ type: 'GO_SCREEN', screen: 'completion' }); submitAll() }
   }, [config, dispatch, submitAll])
 
@@ -536,6 +698,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
       if (enabledSections.includes('math')) {
         dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
+      } else if (enabledSections.includes('cultural_fit')) {
+        dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
       } else {
         dispatch({ type: 'GO_SCREEN', screen: 'completion' })
         submitAll()
@@ -549,8 +713,13 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     dispatch({ type: 'SET_MATH_ANSWER', idx: state.mathIdx, value })
     dispatch({ type: 'RECORD_MATH_TIMING', idx: state.mathIdx, timeSpent })
     if (state.mathIdx + 1 >= mathQuestions.length) {
-      dispatch({ type: 'GO_SCREEN', screen: 'completion' })
-      submitAll()
+      const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
+      if (enabledSections.includes('cultural_fit')) {
+        dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
+      } else {
+        dispatch({ type: 'GO_SCREEN', screen: 'completion' })
+        submitAll()
+      }
     } else {
       dispatch({ type: 'NEXT_MATH' })
     }
@@ -735,10 +904,11 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         if (enabledSections.includes('roleplay')) dispatch({ type: 'GO_SCREEN', screen: 'roleplay_intro' })
         else if (enabledSections.includes('caso')) dispatch({ type: 'GO_SCREEN', screen: 'caso_intro' })
         else if (enabledSections.includes('math')) dispatch({ type: 'GO_SCREEN', screen: 'math_intro' })
+        else if (enabledSections.includes('cultural_fit')) dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
         else { dispatch({ type: 'GO_SCREEN', screen: 'completion' }); submitAll() }
       }} />
       )}
-      {state.screen === 'roleplay_intro' && <RolePlayIntroScreen onStart={handleRolePlayStart} />}
+      {state.screen === 'roleplay_intro' && <RolePlayIntroScreen onStart={handleRolePlayStart} roleplayBankCase={roleplayBankCase} />}
       {state.screen === 'roleplay_prep' && <RolePlayPrepScreen onReady={handleRolePlayCallStart} voiceProvider={liveConfig.voice_provider ?? 'vapi'} onPhoneCapture={setCandidatePhone} roleplayCase={roleplayCase} roleplayBankCase={roleplayBankCase} />}
       {state.screen === 'roleplay_call' && <RolePlayCallScreen onDone={handleRolePlayDone} cameraStream={roleCameraStreamRef.current} voiceProvider={liveConfig.voice_provider ?? 'vapi'} candidatePhone={candidatePhone || undefined} roleplayCase={roleplayCase} roleplayBankCase={roleplayBankCase} />}
       {state.screen === 'roleplay_done' && <RolePlayDoneScreen onNext={handleRolePlayNext} />}
@@ -771,8 +941,13 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           onDone={(answers, secsLeft) => {
             spreadsheetAnswersRef.current  = answers
             spreadsheetSecsLeftRef.current = secsLeft
-            dispatch({ type: 'GO_SCREEN', screen: 'completion' })
-            submitAll(answers)
+            const enabledSections = liveConfig.enabled_sections ?? ['sharktank', 'caso', 'math']
+            if (enabledSections.includes('cultural_fit')) {
+              dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_intro' })
+            } else {
+              dispatch({ type: 'GO_SCREEN', screen: 'completion' })
+              submitAll(answers)
+            }
           }}
         />
       )}
@@ -787,6 +962,10 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           onNext={handleMathNext}
         />
       )}
+      {state.screen === 'cultural_fit_intro' && <CulturalFitIntroScreen onStart={handleCulturalFitStart} />}
+      {state.screen === 'cultural_fit_prep' && <CulturalFitPrepScreen onReady={handleCulturalFitCallStart} />}
+      {state.screen === 'cultural_fit_call' && <CulturalFitCallScreen onDone={handleCulturalFitDone} cameraStream={cfCameraStreamRef.current} />}
+      {state.screen === 'cultural_fit_done' && <CulturalFitDoneScreen onNext={handleCulturalFitNext} />}
       {state.screen === 'completion' && (
         <CompletionScreen name={state.candidate.name} submitting={state.submitting} error={state.submitError} confirmationCode={state.confirmationCode} />
       )}

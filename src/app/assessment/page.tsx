@@ -37,13 +37,23 @@ async function resolveCohortCase(
   }
 
   if (!existingMember) {
-    await supabase.from('cohort_members').insert({
+    const { error: insertErr } = await supabase.from('cohort_members').insert({
       cohort_id: cohort.id,
       email: normalizedEmail,
       assigned_caso_id: assignedCasoId,
       join_method: 'link',
       first_accessed_at: new Date().toISOString(),
     })
+    if (insertErr) {
+      // Race condition recovery — retry SELECT then patch
+      console.warn('[resolveCohortCase] insert conflict, retrying SELECT:', insertErr.message)
+      const { data: raceMember } = await supabase
+        .from('cohort_members').select('*')
+        .eq('cohort_id', cohort.id).eq('email', normalizedEmail).maybeSingle()
+      if (raceMember && !raceMember.assigned_caso_id && assignedCasoId) {
+        await supabase.from('cohort_members').update({ assigned_caso_id: assignedCasoId }).eq('id', raceMember.id)
+      }
+    }
   } else {
     const updates: Record<string, unknown> = {}
     if (!existingMember.assigned_caso_id && assignedCasoId) updates.assigned_caso_id = assignedCasoId

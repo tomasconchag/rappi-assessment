@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { RoleplayCase, RoleplayBankEntry } from '@/types/assessment'
 
 interface Props {
-  onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null) => void
+  onReady: (recorder: MediaRecorder, chunks: Blob[], mimeType: string, cameraStream: MediaStream | null, screenStream: MediaStream | null) => void
   voiceProvider?: 'vapi' | 'arbol'
   onPhoneCapture?: (phone: string) => void
   roleplayCase?: RoleplayCase | null
@@ -13,29 +13,7 @@ interface Props {
 
 const PREP_SECONDS = 5 * 60
 
-const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
-  restaurant_name: 'Heladería La Fiore',
-  owner_name: 'Valentina Ríos',
-  owner_gender: 'f',
-  city: 'Cali',
-  category: 'Helados',
-  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
-  ticket_avg: '$29.900',
-  orders_per_week: '~70–75',
-  inactive_time: '2+ meses',
-  strategies: [
-    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
-    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
-  ],
-  opportunities: [
-    'Ads consumen solo el 46% del presupuesto disponible. Rappi co-invierte el 70% — hay presupuesto sin usar.',
-    'Campaña visible solo en Onces y Cena — horario ampliable a otras franjas.',
-    'Cerrado los martes — potencial de apertura o campaña en ese horario.',
-    'Descuentos generan 22X retorno — espacio para incrementar el porcentaje.',
-  ],
-  sales_data: [50, 77, 61, 52, 76, 74, 74],
-  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
-}
+// No default case — the prep screen only runs when a bank case is confirmed.
 
 function playBeep(frequency: number, duration: number, times = 1) {
   try {
@@ -56,7 +34,12 @@ function playBeep(frequency: number, duration: number, times = 1) {
 }
 
 export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCapture, roleplayCase, roleplayBankCase }: Props) {
-  const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
+  // rc is a null-safe fallback for legacy UI blocks — only rendered when !roleplayBankCase
+  const rc = roleplayCase ?? {
+    restaurant_name: '—', owner_name: '—', owner_gender: 'f' as const, city: '—',
+    category: '—', schedule: '—', ticket_avg: '—', orders_per_week: '—', inactive_time: '—',
+    strategies: [], opportunities: [], sales_data: [0], sales_labels: [''],
+  }
   const maxBar = Math.max(...rc.sales_data)
   const ownerTitle = rc.owner_gender === 'f' ? 'Dueña' : 'Dueño'
   const [secondsLeft, setSecondsLeft] = useState(PREP_SECONDS)
@@ -65,15 +48,16 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
   const [hasCamPip,   setHasCamPip]   = useState(false)
   const [phoneNumber, setPhoneNumber] = useState('+57')
 
-  const recorderRef    = useRef<MediaRecorder | null>(null)
-  const chunksRef      = useRef<Blob[]>([])
-  const mimeRef        = useRef('video/webm')
-  const warned60Ref    = useRef(false)
-  const expiredRef     = useRef(false)
-  const onReadyRef     = useRef(onReady)
+  const recorderRef     = useRef<MediaRecorder | null>(null)
+  const chunksRef       = useRef<Blob[]>([])
+  const mimeRef         = useRef('video/webm')
+  const warned60Ref     = useRef(false)
+  const expiredRef      = useRef(false)
+  const onReadyRef      = useRef(onReady)
   const cameraStreamRef = useRef<MediaStream | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
   const cameraVideoRef  = useRef<HTMLVideoElement | null>(null)
-  onReadyRef.current   = onReady
+  onReadyRef.current    = onReady
 
   // Stop camera stream on unmount ONLY if we haven't handed it off to the parent
   useEffect(() => {
@@ -100,8 +84,10 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
           if (!expiredRef.current && recorderRef.current) {
             expiredRef.current = true
             const cam = cameraStreamRef.current
+            const scr = screenStreamRef.current
             cameraStreamRef.current = null // hand off ownership to parent
-            onReadyRef.current(recorderRef.current, chunksRef.current, mimeRef.current, cam)
+            screenStreamRef.current = null
+            onReadyRef.current(recorderRef.current, chunksRef.current, mimeRef.current, cam, scr)
           }
           return 0
         }
@@ -116,9 +102,10 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
     setRecError('')
     try {
       // Screen capture (tab) — low framerate + resolution to keep file size under 50MB
+      // audio: true enables tab audio capture so the AI agent's voice is recorded too
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 8, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
+        audio: true,
       })
 
       // Camera + mic — required for evaluation
@@ -147,6 +134,9 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
         }
       }
 
+      // Store screen stream so parent can stop it explicitly when the call ends
+      screenStreamRef.current = screenStream
+
       // Attach camera to PiP video element
       cameraStreamRef.current = cameraStream
       setHasCamPip(gotCamera)
@@ -154,10 +144,11 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
         cameraVideoRef.current.srcObject = cameraStream
       }
 
-      // Build combined stream: screen video + mic audio
+      // Build combined stream: screen video + tab audio (AI voice) + mic audio (candidate voice)
       const tracks = [
         ...screenStream.getVideoTracks(),
-        ...cameraStream.getAudioTracks(),
+        ...screenStream.getAudioTracks(),   // tab audio — captures Vapi AI voice
+        ...cameraStream.getAudioTracks(),   // mic audio — captures candidate voice
       ]
       const combined = new MediaStream(tracks)
 
@@ -209,8 +200,10 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
       onPhoneCapture(phoneNumber.trim())
     }
     const cam = cameraStreamRef.current
+    const scr = screenStreamRef.current
     cameraStreamRef.current = null // hand off ownership to parent
-    onReady(recorderRef.current, chunksRef.current, mimeRef.current, cam)
+    screenStreamRef.current = null
+    onReady(recorderRef.current, chunksRef.current, mimeRef.current, cam, scr)
   }, [onReady, recStatus, voiceProvider, phoneNumber, onPhoneCapture])
 
   const mins  = String(Math.floor(secondsLeft / 60)).padStart(2, '0')

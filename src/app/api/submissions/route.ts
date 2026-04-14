@@ -26,9 +26,12 @@ export async function POST(req: NextRequest) {
     const videoPath    = b.videoPath    as string | null
     const videoMimeType = b.videoMimeType as string
     const videoRecorded = b.videoRecorded as boolean
-    const roleplayCompleted  = b.roleplayCompleted as boolean
-    const roleplayVideoPath  = b.roleplayVideoPath as string | null
-    const roleplayTranscript = b.roleplayTranscript as string | undefined
+    const roleplayCompleted    = b.roleplayCompleted as boolean
+    const roleplayVideoPath    = b.roleplayVideoPath as string | null
+    const roleplayTranscript   = b.roleplayTranscript as string | undefined
+    const roleplayBankCaseId   = b.roleplayBankCaseId as string | null | undefined
+    const culturalFitCompleted = b.culturalFitCompleted as boolean
+    const culturalFitVideoPath = b.culturalFitVideoPath as string | null
     const mathScoreRaw  = b.mathScoreRaw  as number
     const mathScoreTotal = b.mathScoreTotal as number
     const mathScorePct  = b.mathScorePct  as number
@@ -40,7 +43,8 @@ export async function POST(req: NextRequest) {
     const casoTimings  = (b.casoTimings  as Record<number, number>) ?? {}
     const mathAnswers  = (b.mathAnswers  as Record<number, string>) ?? {}
     const mathTimings  = (b.mathTimings  as Record<number, number>) ?? {}
-    const mathDetails  = (b.mathDetails  as { idx: number; correct: boolean; pointsAwarded: number }[]) ?? []
+    const mathDetails  = (b.mathDetails  as { idx: number; correct: boolean; pointsAwarded: number; got?: string }[]) ?? []
+    const mathSpreadsheetVersion = b.mathSpreadsheetVersion as string | null | undefined
     const proctoring   = (b.proctoring   as Record<string, unknown>) ?? {}
     const snapshotPaths = (b.snapshotPaths as string[]) ?? []
 
@@ -159,17 +163,29 @@ export async function POST(req: NextRequest) {
       time_spent_s: casoTimings[i] || 0,
     }))
 
-    const mathRows = mathQs.map((q: { id: string; section: string }, i: number) => {
-      const detail = mathDetails?.find((d: { idx: number }) => d.idx === i)
-      return {
-        question_id: q.id,
-        section: 'math',
-        answer_text: mathAnswers[i] || '',
-        time_spent_s: mathTimings[i] || 0,
-        is_correct: detail?.correct ?? null,
-        points_awarded: detail?.pointsAwarded ?? 0,
-      }
-    })
+    // Spreadsheet mode: build one row per answer cell (using mathDetails), mapped to the
+    // corresponding question_id by position index. Ignore any extra DB questions beyond
+    // the number of spreadsheet cells to avoid null/ungraded phantom rows.
+    const mathRows = mathSpreadsheetVersion
+      ? mathDetails.map((d, i) => ({
+          question_id: mathQs[i]?.id ?? null,
+          section: 'math',
+          answer_text: d.got ?? '',
+          time_spent_s: 0,
+          is_correct: d.correct,
+          points_awarded: d.pointsAwarded ?? 0,
+        })).filter((r) => r.question_id !== null)
+      : mathQs.map((q: { id: string; section: string }, i: number) => {
+          const detail = mathDetails?.find((d: { idx: number }) => d.idx === i)
+          return {
+            question_id: q.id,
+            section: 'math',
+            answer_text: mathAnswers[i] || '',
+            time_spent_s: mathTimings[i] || 0,
+            is_correct: detail?.correct ?? null,
+            points_awarded: detail?.pointsAwarded ?? 0,
+          }
+        })
 
     const snapshotRows = snapshotPaths.map((path: string, i: number) => ({
       storage_path: path,
@@ -217,39 +233,89 @@ export async function POST(req: NextRequest) {
 
     // ── Auto-trigger AI evaluations after response is sent ───────────────────
     const evalBase = process.env.NEXT_PUBLIC_APP_URL || 'https://rappi-assessment.vercel.app'
+
+    // Helper: call an evaluation endpoint with up to 2 retries on failure
+    async function evalWithRetry(url: string, body: Record<string, unknown>, label: string) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 5000 * attempt))
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          if (res.ok) return
+          const errText = await res.text().catch(() => res.status.toString())
+          console.error(`${label} attempt ${attempt + 1} failed (${res.status}):`, errText)
+        } catch (err) {
+          console.error(`${label} attempt ${attempt + 1} threw:`, err)
+        }
+      }
+    }
+
     // Caso Práctico: always evaluate (runs in parallel for all 4 questions ~6s)
     after(async () => {
-      try {
-        await fetch(`${evalBase}/api/evaluate-caso`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ submissionId }),
-        })
-      } catch (err) { console.error('Auto caso eval error:', err) }
+      await evalWithRetry(`${evalBase}/api/evaluate-caso`, { submissionId }, 'Auto caso eval')
     })
     // RolePlay: if completed and either video uploaded or transcript provided
     if (roleplayCompleted && (roleplayVideoPath || roleplayTranscript)) {
+      // Capture values for closure — email and roleplayBankCaseId resolved above
+      const rpCandEmail = email   // already lowercased above
+      const rpBankCaseId = roleplayBankCaseId ?? null
       after(async () => {
         try {
-          await fetch(`${evalBase}/api/evaluate-roleplay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ submissionId }),
-          })
+          // Build case context so the evaluator knows which restaurant was assigned
+          let caseContext: string | null = null
+          try {
+            const adminDb = createAdminClient()
+            // Prefer the case ID sent from the client; fall back to cohort_members lookup by email
+            let resolvedBankId = rpBankCaseId
+            if (!resolvedBankId) {
+              const { data: cm } = await adminDb
+                .from('cohort_members')
+                .select('assigned_roleplay_bank_id')
+                .eq('email', rpCandEmail)
+                .maybeSingle()
+              resolvedBankId = (cm as { assigned_roleplay_bank_id?: string | null } | null)?.assigned_roleplay_bank_id ?? null
+            }
+            if (resolvedBankId) {
+              const { data: rpCase } = await adminDb
+                .from('roleplay_bank')
+                .select('restaurant_name,category,city,owner_name,owner_profile,character_brief,key_objections,farmer_briefing')
+                .eq('id', resolvedBankId)
+                .single()
+              if (rpCase) {
+                caseContext = `Restaurante: ${rpCase.restaurant_name} (${rpCase.category}, ${rpCase.city})\nDueño: ${rpCase.owner_name}\nPerfil: ${rpCase.owner_profile}\nObjeciones clave: ${rpCase.key_objections}\nBriefing: ${rpCase.farmer_briefing ?? ''}`
+              }
+            }
+          } catch (ctxErr) {
+            console.warn('Auto roleplay: could not fetch caseContext:', String(ctxErr))
+          }
+
+          await evalWithRetry(`${evalBase}/api/evaluate-roleplay`, { submissionId, caseContext }, 'Auto roleplay eval')
         } catch (err) { console.error('Auto roleplay eval error:', err) }
       })
     }
 
+    // Cultural Fit: update columns + trigger evaluation
+    if (culturalFitCompleted) {
+      after(async () => {
+        try {
+          // Update cultural_fit columns (not in atomic RPC)
+          await supabase.from('submissions').update({
+            cultural_fit_completed: true,
+            cultural_fit_video_path: culturalFitVideoPath ?? null,
+          }).eq('id', submissionId)
+          if (culturalFitVideoPath) {
+            await evalWithRetry(`${evalBase}/api/evaluate-cultural-fit`, { submissionId }, 'Auto cultural fit eval')
+          }
+        } catch (err) { console.error('Auto cultural fit eval error:', err) }
+      })
+    }
     // SharkTank: only if video was recorded (starts AssemblyAI transcription job)
     if (videoRecorded) {
       after(async () => {
-        try {
-          await fetch(`${evalBase}/api/evaluate-sharktank`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ submissionId }),
-          })
-        } catch (err) { console.error('Auto sharktank eval error:', err) }
+        await evalWithRetry(`${evalBase}/api/evaluate-sharktank`, { submissionId }, 'Auto sharktank eval')
       })
     }
     // ─────────────────────────────────────────────────────────────────────────

@@ -1,10 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { AIEvalSection } from './AIEvalSection'
 import { RolePlayEvalSection } from './RolePlayEvalSection'
+import { CulturalFitEvalSection } from './CulturalFitEvalSection'
 import { CandidateActions } from './CandidateActions'
-import { normalizedWeights } from '@/lib/challenges'
 import type { SectionId } from '@/lib/challenges'
 
 export default async function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,35 +29,45 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const answers   = (sub.answers || []) as any[]
   const snapshots = (sub.webcam_snapshots || []) as any[]
 
-  const casoAnswers = answers.filter((a: any) => a.section === 'caso').sort((a: any, b: any) => a.assessment_questions?.position - b.assessment_questions?.position)
   const mathAnswers = answers.filter((a: any) => a.section === 'math').sort((a: any, b: any) => a.assessment_questions?.position - b.assessment_questions?.position)
-
-  // Load AI evaluations for this submission
-  const { data: aiEvals } = await supabase
-    .from('ai_evaluations')
-    .select('*')
-    .eq('submission_id', id)
-    .order('evaluated_at', { ascending: true })
 
   // ── Enabled sections — fallback to old default for legacy submissions ──────
   const enabledSections: SectionId[] = (sub.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
-  const weights = normalizedWeights(enabledSections)
   // ─────────────────────────────────────────────────────────────────────────
 
   const scoreColor  = (v: number) => v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
   const fraudColor  = pr?.fraud_level === 'Confiable' ? 'var(--green)' : pr?.fraud_level === 'Riesgo Medio' ? 'var(--gold)' : '#ff6b6b'
 
-  // ── Build signed URLs ─────────────────────────────────────────────────────
-  let videoUrl = ''
-  if (sub.video_storage_path) {
-    const { data } = await supabase.storage.from('assessment-videos').createSignedUrl(sub.video_storage_path, 3600)
-    if (data?.signedUrl) videoUrl = data.signedUrl
+  const cfVideoPath = (sub as any).cultural_fit_video_path as string | null
+
+  // ── Roleplay bank case for evaluator context ─────────────────────────────
+  let roleplayCaseContext: string | null = null
+  let roleplayCaseInfo: { restaurant_name: string; category: string; city: string; owner_name: string } | null = null
+  const cohortMember = await supabase
+    .from('cohort_members')
+    .select('assigned_roleplay_bank_id')
+    .eq('email', cand?.email ?? '')
+    .maybeSingle()
+  const rpBankId = (cohortMember.data as any)?.assigned_roleplay_bank_id ?? null
+  if (rpBankId) {
+    const { data: rpCase } = await supabase.from('roleplay_bank').select('restaurant_name,category,city,owner_name,owner_profile,character_brief,key_objections,farmer_briefing').eq('id', rpBankId).single()
+    if (rpCase) {
+      roleplayCaseContext = `Restaurante: ${rpCase.restaurant_name} (${rpCase.category}, ${rpCase.city})\nDueño: ${rpCase.owner_name}\nPerfil: ${rpCase.owner_profile}\nObjeciones clave: ${rpCase.key_objections}\nBriefing: ${rpCase.farmer_briefing ?? ''}`
+      roleplayCaseInfo = { restaurant_name: rpCase.restaurant_name, category: rpCase.category, city: rpCase.city, owner_name: rpCase.owner_name }
+    }
   }
 
+  // ── Build signed URLs ─────────────────────────────────────────────────────
   let roleplayVideoUrl = ''
   if (sub.roleplay_video_path) {
     const { data } = await supabase.storage.from('assessment-videos').createSignedUrl(sub.roleplay_video_path, 3600)
     if (data?.signedUrl) roleplayVideoUrl = data.signedUrl
+  }
+
+  let culturalFitVideoUrl = ''
+  if (cfVideoPath) {
+    const { data } = await supabase.storage.from('assessment-videos').createSignedUrl(cfVideoPath, 3600)
+    if (data?.signedUrl) culturalFitVideoUrl = data.signedUrl
   }
 
   const snapshotUrls: string[] = []
@@ -73,6 +82,11 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const rpScore        = (sub as any).roleplay_score as number | null
   const rpBand         = (sub as any).roleplay_band as string | null
   const rpTranscript   = (sub as any).roleplay_transcript as string | null
+  const cfScore        = (sub as any).cultural_fit_score as number | null
+  const cfBand         = (sub as any).cultural_fit_band as string | null
+  const cfEvaluation   = (sub as any).cultural_fit_evaluation ?? null
+  const cfTranscript   = (sub as any).cultural_fit_transcript as string | null
+  const cfCompleted    = !!(sub as any).cultural_fit_completed
   const mathTimeSecs   = (sub as any).math_time_secs as number | null
   const mathTimeStr    = mathTimeSecs != null
     ? `${Math.floor(mathTimeSecs / 60)}m ${mathTimeSecs % 60}s`
@@ -81,7 +95,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const initials = cand?.name?.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() || '?'
   const dateStr  = sub.completed_at ? new Date(sub.completed_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
-  const sectionEmojis: Record<string, string> = { sharktank: '🦈', roleplay: '📞', caso: '📊', math: '🧮' }
+  const sectionEmojis: Record<string, string> = { sharktank: '🦈', roleplay: '📞', caso: '📊', math: '🧮', cultural_fit: '🎙' }
 
   const card: React.CSSProperties = {
     background: 'var(--card)',
@@ -93,13 +107,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
 
   const sectionLabel = (text: string) => (
     <h3 style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--muted)', marginBottom: 20, margin: '0 0 20px 0' }}>{text}</h3>
-  )
-
-  const frow = (label: string, value: string | number, color?: string) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: 14 }}>
-      <span style={{ color: 'var(--dim)' }}>{label}</span>
-      <span style={{ fontFamily: 'Space Mono, monospace', fontWeight: 700, ...(color ? { color } : {}) }}>{value}</span>
-    </div>
   )
 
   // Math question chips
@@ -322,6 +329,26 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               )}
             </div>
 
+            {/* Assigned case info */}
+            {roleplayCaseInfo && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14,
+                padding: '8px 12px', borderRadius: 8,
+                background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)',
+              }}>
+                <span style={{ fontSize: 14 }}>🏪</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
+                    {roleplayCaseInfo.restaurant_name}
+                    <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6 }}>— {roleplayCaseInfo.owner_name}</span>
+                  </div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                    {roleplayCaseInfo.category} · {roleplayCaseInfo.city}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Score display if scored */}
             {rpScore != null && rpBand && (
               <div style={{
@@ -334,7 +361,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
                   {rpScore}
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>/ 100 pts</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>/ 87 pts</div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, fontWeight: 700, color: scoreColor(rpScore), textTransform: 'uppercase', letterSpacing: '1px' }}>
                     {rpBand}
                   </div>
@@ -381,23 +408,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         )}
       </div>
 
-      {/* ── CASO PRACTICO (full width) ─────────────────────────────────────── */}
-      {casoAnswers.length > 0 && (
-        <div style={card}>
-          {sectionLabel('📊 Caso Práctico — Respuestas')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {casoAnswers.map((a: any, i: number) => (
-              <div key={a.id} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--dim)', marginBottom: 8 }}>P{i + 1}: {a.assessment_questions?.content}</div>
-                <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', whiteSpace: 'pre-wrap', margin: 0 }}>
-                  {a.answer_text || <span style={{ fontStyle: 'italic', color: 'var(--muted)' }}>Sin respuesta</span>}
-                </p>
-                <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)', marginTop: 8 }}>⏱ {a.time_spent_s}s</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── INTEGRIDAD / PROCTORING (full width, compact) ──────────────────── */}
       {pr && (
@@ -442,20 +452,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {/* ── SHARKTANK VIDEO (full width) ───────────────────────────────────── */}
-      {enabledSections.includes('sharktank') && videoUrl && (
-        <div style={card}>
-          {sectionLabel('🦈 SharkTank — Video Pitch')}
-          <div style={{ maxWidth: 720 }}>
-            <div style={{ position: 'relative', overflow: 'hidden', background: '#000', aspectRatio: '16/9', borderRadius: 'var(--r)', border: '1px solid var(--border)' }}>
-              <video src={videoUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
-              {sub.video_mime_type} · {sub.video_storage_path}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── ROLEPLAY AI EVALUATION ─────────────────────────────────────────── */}
       {enabledSections.includes('roleplay') && (
@@ -467,16 +463,35 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
           initialTranscript={(sub as any).roleplay_transcript ?? null}
           roleplayVideoPath={sub.roleplay_video_path ?? null}
           roleplayCompleted={!!sub.roleplay_completed}
+          caseContext={roleplayCaseContext}
         />
       )}
 
-      {/* ── AI EVALUATION (caso) ───────────────────────────────────────────── */}
-      <AIEvalSection
-        submissionId={id}
-        aiEvals={(aiEvals || []) as any[]}
-        casoAnswers={casoAnswers}
-        videoRecorded={!!videoUrl}
-      />
+      {/* ── CULTURAL FIT AI EVALUATION ────────────────────────────────────── */}
+      {(enabledSections.includes('cultural_fit') || cfCompleted) && (
+        <CulturalFitEvalSection
+          submissionId={id}
+          initialScore={cfScore}
+          initialBand={cfBand}
+          initialEvaluation={cfEvaluation}
+          initialTranscript={cfTranscript}
+          culturalFitVideoPath={cfVideoPath}
+          culturalFitCompleted={cfCompleted}
+        />
+      )}
+
+      {/* ── CULTURAL FIT VIDEO ────────────────────────────────────────────── */}
+      {culturalFitVideoUrl && (
+        <div style={card}>
+          {sectionLabel('🎙 Cultural Fit — Grabación')}
+          <div style={{ maxWidth: 720 }}>
+            <div style={{ position: 'relative', overflow: 'hidden', background: '#000', aspectRatio: '16/9', borderRadius: 'var(--r)', border: '1px solid rgba(168,85,247,.2)' }}>
+              <video src={culturalFitVideoUrl} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ── SNAPSHOTS ─────────────────────────────────────────────────────── */}
       {snapshotUrls.length > 0 && (

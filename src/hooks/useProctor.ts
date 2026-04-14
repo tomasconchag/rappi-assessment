@@ -32,6 +32,12 @@ export type ProctoringRef = {
   fraudScore: () => number
 }
 
+// Screens where screen-sharing is required — fullscreen enforcement must be suspended
+const RECORDING_SCREENS = new Set([
+  'roleplay_prep', 'roleplay_call',
+  'cultural_fit_prep', 'cultural_fit_call',
+])
+
 export function useProctor(options: {
   active: boolean
   currentScreen: string
@@ -142,6 +148,9 @@ export function useProctor(options: {
       if (!isFs) {
         state.current.fsExit++
         logEv('fs_exit')
+        // During recording screens the user must share their screen, which exits fullscreen —
+        // don't warn or try to re-enter, it would fight with the getDisplayMedia dialog.
+        if (RECORDING_SCREENS.has(screenRef.current)) return
         if (state.current.fsExit <= 2) warn('⚠️ Pantalla completa requerida', 'El assessment debe realizarse en pantalla completa.')
         setTimeout(() => goFullscreen(), 500)
       }

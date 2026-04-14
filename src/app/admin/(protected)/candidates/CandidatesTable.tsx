@@ -12,6 +12,9 @@ interface Submission {
   math_score_pct: number | null
   caso_score_pct: number | null
   roleplay_score: number | null
+  cultural_fit_score: number | null
+  cultural_fit_band: string | null
+  cultural_fit_completed: boolean | null
   video_recorded: boolean | null
   roleplay_completed: boolean | null
   enabled_sections: string[] | null
@@ -63,7 +66,7 @@ function ScoreBar({ value }: { value: number }) {
 }
 
 function exportCSV(submissions: Submission[]) {
-  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'RolePlay', 'Video', 'Integridad', 'Fraud Score']
+  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'RolePlay', 'Cultural Fit Score', 'Cultural Fit Band', 'Video', 'Integridad', 'Fraud Score']
   const rows = submissions.map(s => {
     const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
     const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
@@ -77,6 +80,8 @@ function exportCSV(submissions: Submission[]) {
       s.math_score_pct ?? '',
       s.caso_score_pct ?? '',
       s.roleplay_score ?? '',
+      s.cultural_fit_score ?? '',
+      s.cultural_fit_band ?? '',
       s.video_recorded ? 'Sí' : 'No',
       pr?.fraud_level || '',
       pr?.fraud_score ?? '',
@@ -317,6 +322,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                 >
                   Role Play{sortIcon('roleplay')}
                 </th>
+                <th style={th}>Cultural Fit</th>
                 <th style={th}>Integridad</th>
                 <th style={{ ...th, textAlign: 'right', paddingRight: 20 }}></th>
               </tr>
@@ -324,7 +330,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '56px 20px', textAlign: 'center' }}>
+                  <td colSpan={8} style={{ padding: '56px 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
                     <div style={{ fontSize: 14, color: 'var(--dim)', fontFamily: 'DM Sans' }}>
                       {query ? `Sin resultados para "${query}"` : 'No hay candidatos aún.'}
@@ -413,6 +419,44 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                           whiteSpace: 'nowrap',
                         }}>
                           <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--gold)', flexShrink: 0 }} />
+                          Pendiente
+                        </span>
+                      ) : (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>No</span>
+                      )}
+                    </td>
+
+                    {/* Cultural Fit */}
+                    <td style={td}>
+                      {!sec.includes('cultural_fit') ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
+                      ) : s.cultural_fit_score != null ? (() => {
+                        const band = s.cultural_fit_band ?? ''
+                        const bandCol =
+                          band === 'TOP TALENT'    ? '#06d68a' :
+                          band === 'STRONG FIT'    ? '#4361ee' :
+                          band === 'POTENTIAL RISK' ? '#f59e0b' : '#e03554'
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: bandCol, fontWeight: 700 }}>
+                              {s.cultural_fit_score}/100
+                            </span>
+                            {band && (
+                              <span style={{ fontSize: 9.5, fontFamily: 'Space Mono, monospace', color: bandCol, opacity: 0.8, letterSpacing: '.3px' }}>
+                                {band}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })() : s.cultural_fit_completed ? (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 9px', borderRadius: 100,
+                          fontSize: 10.5, fontFamily: 'Space Mono, monospace', fontWeight: 700,
+                          color: '#a855f7', background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.25)',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#a855f7', flexShrink: 0 }} />
                           Pendiente
                         </span>
                       ) : (

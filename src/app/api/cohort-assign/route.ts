@@ -42,8 +42,9 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   let assignedCasoId: string | null = existingMember?.assigned_caso_id ?? null
+  let assignedRpBankId: string | null = (existingMember as any)?.assigned_roleplay_bank_id ?? null
 
-  // Assign case if not yet assigned
+  // Assign caso if not yet assigned
   if (!assignedCasoId && cohort.caso_mode !== 'global') {
     if (cohort.caso_mode === 'fixed' && cohort.fixed_caso_id) {
       assignedCasoId = cohort.fixed_caso_id
@@ -59,18 +60,63 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Upsert member row
+  // Assign roleplay bank case if not yet assigned
+  const rpBankMode = cohort.roleplay_bank_mode ?? 'global'
+  if (!assignedRpBankId && rpBankMode !== 'global') {
+    if (rpBankMode === 'fixed' && cohort.fixed_roleplay_bank_id) {
+      assignedRpBankId = cohort.fixed_roleplay_bank_id
+    } else if (rpBankMode === 'random') {
+      let query = supabase.from('roleplay_bank').select('id')
+      if (cohort.roleplay_bank_difficulty_filter) {
+        query = query.eq('difficulty', cohort.roleplay_bank_difficulty_filter)
+      }
+      const { data: pool } = await query
+      if (pool && pool.length > 0) {
+        assignedRpBankId = pool[Math.floor(Math.random() * pool.length)].id
+      }
+    }
+  }
+
+  // Upsert member row — with race-condition recovery (same email submitted twice concurrently)
   if (!existingMember) {
-    await supabase.from('cohort_members').insert({
+    const { error: insertErr } = await supabase.from('cohort_members').insert({
       cohort_id: cohort.id,
       email: normalizedEmail,
       assigned_caso_id: assignedCasoId,
+      assigned_roleplay_bank_id: assignedRpBankId,
       join_method: 'link',
       first_accessed_at: new Date().toISOString(),
     })
+
+    if (insertErr) {
+      // Race condition: another concurrent request inserted the row first.
+      // Retry SELECT to get the existing member and apply any pending assignments.
+      console.warn('[cohort-assign] insert conflict — retrying SELECT:', insertErr.message)
+      const { data: raceMember } = await supabase
+        .from('cohort_members')
+        .select('*')
+        .eq('cohort_id', cohort.id)
+        .eq('email', normalizedEmail)
+        .maybeSingle()
+
+      if (!raceMember) {
+        // Unable to recover — the insert failed for a non-race reason
+        console.error('[cohort-assign] failed to insert or recover member:', insertErr.message)
+        return Response.json({ error: 'Error al registrar en el cohort. Intenta de nuevo.' }, { status: 500 })
+      }
+
+      // Patch the recovered row with any assignments that the race winner may have missed
+      const recoverUpdates: Record<string, unknown> = {}
+      if (!raceMember.assigned_caso_id && assignedCasoId) recoverUpdates.assigned_caso_id = assignedCasoId
+      if (!(raceMember as any).assigned_roleplay_bank_id && assignedRpBankId) recoverUpdates.assigned_roleplay_bank_id = assignedRpBankId
+      if (Object.keys(recoverUpdates).length > 0) {
+        await supabase.from('cohort_members').update(recoverUpdates).eq('id', raceMember.id)
+      }
+    }
   } else {
     const updates: Record<string, unknown> = {}
     if (!existingMember.assigned_caso_id && assignedCasoId) updates.assigned_caso_id = assignedCasoId
+    if (!(existingMember as any).assigned_roleplay_bank_id && assignedRpBankId) updates.assigned_roleplay_bank_id = assignedRpBankId
     if (!existingMember.first_accessed_at) updates.first_accessed_at = new Date().toISOString()
     if (existingMember.join_method === 'manual') updates.join_method = 'link'
     if (Object.keys(updates).length > 0) {
@@ -89,10 +135,19 @@ export async function POST(req: NextRequest) {
     casoBankEntry = caso ?? null
   }
 
-  // Fetch active roleplay bank case from assessment config
-  // Cohort's manual roleplay_case JSONB takes precedence; if absent, use active_roleplay_case_id
+  // Resolve roleplay bank case:
+  // 1. Cohort-assigned (fixed or random from bank)
+  // 2. Global fallback: active case from assessment_configs
   let roleplayBankCase: RoleplayBankEntry | null = null
-  if (!cohort.roleplay_case) {
+  if (assignedRpBankId) {
+    const { data: bankCase } = await supabase
+      .from('roleplay_bank')
+      .select('*')
+      .eq('id', assignedRpBankId)
+      .single()
+    roleplayBankCase = bankCase ?? null
+  } else {
+    // Global: use the active case set in admin Role Play panel
     const { data: config } = await supabase
       .from('assessment_configs')
       .select('active_roleplay_case_id')
@@ -117,7 +172,6 @@ export async function POST(req: NextRequest) {
     casoBankEntry,
     mathModeOverride: cohort.math_mode_override ?? null,
     voiceProviderOverride: cohort.voice_provider_override ?? null,
-    roleplayCase: cohort.roleplay_case ?? null,
     roleplayBankCase,
   })
 }

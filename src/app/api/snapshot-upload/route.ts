@@ -5,7 +5,8 @@ export async function POST(req: NextRequest) {
   try {
     const { candidateEmail, index } = await req.json()
     const safeName = candidateEmail.replace('@', '_').replace(/\./g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
-    const path = `${safeName}_snap${index}_${Date.now()}.jpg`
+    // crypto.randomUUID() prevents path collisions when multiple candidates upload simultaneously
+    const path = `${safeName}_snap${index}_${Date.now()}_${crypto.randomUUID()}.jpg`
 
     const supabase = createAdminClient()
     const { data, error } = await supabase.storage

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { RoleplayCase, RoleplayBankEntry } from '@/types/assessment'
 
 interface Props {
-  onDone: () => void
+  onDone: (vapiCallId?: string | null) => void
   cameraStream: MediaStream | null
   voiceProvider: 'vapi' | 'arbol'
   candidatePhone?: string
@@ -12,31 +12,48 @@ interface Props {
   roleplayBankCase?: RoleplayBankEntry | null
 }
 
-const DEFAULT_ROLEPLAY_CASE: RoleplayCase = {
-  restaurant_name: 'Heladería La Fiore',
-  owner_name: 'Valentina Ríos',
-  owner_gender: 'f',
-  city: 'Cali',
-  category: 'Helados',
-  schedule: 'Mié–Lun · 3:00 pm – 9:30 pm',
-  ticket_avg: '$29.900',
-  orders_per_week: '~70–75',
-  inactive_time: '2+ meses',
-  strategies: [
-    { name: 'Descuentos 5% + PRO', roi: '22X', status: 'active', note: 'ROI 22X activo' },
-    { name: 'Ads $1.000.000/sem', roi: '3.9X', status: 'underused', note: '46% usado, co-inversión 70%' },
-  ],
-  opportunities: [
-    'Los Ads solo gastan el 46% del presupuesto disponible (co-inversión Rappi 70%)',
-    'Campaña visible solo en Onces y Cena — horario ampliable',
-    'Cerrado los martes — posible día de apertura',
-    'Descuentos con 22X retorno — espacio para incrementar',
-  ],
-  sales_data: [50, 77, 61, 52, 76, 74, 74],
-  sales_labels: ['Oct W1', 'Oct W2', 'Oct W3', 'Nov W1', 'Nov W2', 'Nov W3', 'Nov W4'],
-}
-
 const TOTAL_SECONDS = 5 * 60
+
+// ── Build the complete Vapi system prompt from a bank case ─────────────────
+// This is injected via assistantOverrides so the Vapi dashboard config is
+// irrelevant — the agent always gets exactly the right identity and context.
+function buildVapiSystemPrompt(bc: RoleplayBankEntry): string {
+  const ownerTitle = bc.owner_gender === 'f' ? 'dueña' : 'dueño'
+
+  // Extract the metrics block from farmer_briefing
+  let metricsBlock = ''
+  if (bc.farmer_briefing) {
+    const m = bc.farmer_briefing.match(
+      /MÉTRICAS\s+DISPONIBLES\s*:?\s*([\s\S]*?)(?=\nDATO\s+ADICIONAL|\n[A-ZÁÉÍÓÚÑ]{4,}[:\s]|$)/i,
+    )
+    if (m?.[1]?.trim()) {
+      metricsBlock = `\nMÉTRICAS DE TU RESTAURANTE (las conoces — úsalas si te preguntan):\n${m[1].trim()}\n`
+    }
+  }
+
+  return `Eres ${bc.owner_name}, ${ownerTitle} de ${bc.restaurant_name}, un restaurante de ${bc.category} en ${bc.city}, Colombia.
+
+IDENTIDAD — MUY IMPORTANTE:
+- Tu nombre es ${bc.owner_name}. Preséntate SIEMPRE como ${bc.owner_name}.
+- Tu restaurante se llama ${bc.restaurant_name}.
+- NUNCA uses otro nombre ni otro restaurante. Esta es tu única identidad.
+
+PERSONALIDAD Y FORMA DE HABLAR:
+${bc.owner_profile}
+${metricsBlock}
+INFORMACIÓN QUE SABES PERO SOLO REVELAS SI TE HACEN LA PREGUNTA CORRECTA:
+${bc.character_brief}
+
+OBJECIONES QUE DEBES INTRODUCIR DE FORMA NATURAL A LO LARGO DE LA LLAMADA:
+${bc.key_objections}
+
+INSTRUCCIONES DE COMPORTAMIENTO:
+- El candidato es un Account Executive de Rappi que te llama para mejorar tu cuenta.
+- Responde con naturalidad, como lo haría un restaurantero real.
+- No seas ni demasiado fácil ni imposible. Pon resistencia genuina pero déjate convencer si el argumento es bueno.
+- Habla en español colombiano informal.
+- Mantén siempre tu identidad: eres ${bc.owner_name} de ${bc.restaurant_name}.`.trim()
+}
 
 function playBeep(frequency: number, duration: number, times = 1) {
   try {
@@ -59,13 +76,18 @@ function playBeep(frequency: number, duration: number, times = 1) {
 type CallStatus = 'connecting' | 'active' | 'ended'
 
 export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candidatePhone, roleplayCase, roleplayBankCase }: Props) {
-  const rc = roleplayCase ?? DEFAULT_ROLEPLAY_CASE
+  // roleplayBankCase is always required. If it's missing, the call is blocked below.
+  // rc is kept only as a null-safe fallback for legacy UI blocks (dead code when bankCase exists).
+  const rc = roleplayCase ?? {
+    restaurant_name: '—', owner_name: '—', owner_gender: 'f' as const, city: '—',
+    category: '—', schedule: '—', ticket_avg: '—', orders_per_week: '—', inactive_time: '—',
+    strategies: [], opportunities: [], sales_data: [0], sales_labels: [''],
+  }
 
-  // Display names — prefer bank case when available
-  const displayName       = roleplayBankCase?.owner_name       ?? rc.owner_name
-  const displayRestaurant = roleplayBankCase?.restaurant_name  ?? rc.restaurant_name
-  const displayCity       = roleplayBankCase?.city             ?? rc.city
-  const displayCategory   = roleplayBankCase?.category         ?? rc.category
+  const displayName       = roleplayBankCase?.owner_name      ?? rc.owner_name
+  const displayRestaurant = roleplayBankCase?.restaurant_name ?? rc.restaurant_name
+  const displayCity       = roleplayBankCase?.city            ?? rc.city
+  const displayCategory   = roleplayBankCase?.category        ?? rc.category
 
   const [secondsLeft,  setSecondsLeft]  = useState(TOTAL_SECONDS)
   const [callDuration, setCallDuration] = useState(0)
@@ -76,7 +98,10 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
   const [agentSpeaking, setAgentSpeaking] = useState(false)
   const [callError,    setCallError]    = useState<string | null>(null)
 
+  const [timerStarted, setTimerStarted] = useState(false)
+
   const warned60Ref    = useRef(false)
+  const timerStartedRef = useRef(false)
   const endedRef       = useRef(false)
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,6 +110,14 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
   const arbolConvIdRef = useRef<string | null>(null)
   const arbolPollRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const durationRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timerFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const startTimer = useCallback(() => {
+    if (timerStartedRef.current) return
+    timerStartedRef.current = true
+    if (timerFallbackRef.current) { clearTimeout(timerFallbackRef.current); timerFallbackRef.current = null }
+    setTimerStarted(true)
+  }, [])
 
   const maxBar = Math.max(...rc.sales_data)
 
@@ -119,17 +152,39 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
         const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim()
         if (!publicKey || !assistantId) throw new Error('Vapi keys not configured')
 
+        // Hard guard: never start a call without a confirmed bank case.
+        // This prevents any possibility of the agent using stale/default data.
+        if (!roleplayBankCase) {
+          setCallError('No se pudo cargar el caso de roleplay. Recarga la página e intenta de nuevo.')
+          setCallStatus('ended')
+          return
+        }
+
         const vapi = new Vapi(publicKey)
         vapiRef.current = vapi
 
         vapi.on('call-start', () => {
           if (cancelled) return
           setCallStatus('active')
+          // Fallback: start timer after 15s if speech-start hasn't fired yet
+          timerFallbackRef.current = setTimeout(() => startTimer(), 15000)
         })
 
         vapi.on('call-start-success', (event: { callId?: string }) => {
           if (cancelled) return
           if (event?.callId) vapiCallIdRef.current = event.callId
+        })
+
+        // Fallback: some SDK versions fire call-update instead of / in addition to call-start-success.
+        // Cast to `any` because 'call-update' is not in Vapi's typed event list but fires in practice.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(vapi as any).on('call-update', (update: any) => {
+          if (cancelled) return
+          // Try every known field path where the call ID might live
+          const id = update?.call?.id ?? update?.id ?? update?.callId ?? update?.call_id
+          if (id && !vapiCallIdRef.current) {
+            vapiCallIdRef.current = String(id)
+          }
         })
 
         vapi.on('call-end', () => {
@@ -139,7 +194,10 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
         })
 
         vapi.on('speech-start', () => {
-          if (!cancelled) setAgentSpeaking(true)
+          if (!cancelled) {
+            setAgentSpeaking(true)
+            startTimer()
+          }
         })
 
         vapi.on('speech-end', () => {
@@ -166,48 +224,18 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           }
         })
 
-        // Build context prompt — use rich bank case fields when available, fallback to legacy RoleplayCase
-        let contextPrompt: string
+        // Build the complete system prompt from the bank case and inject it
+        // via assistantOverrides — this fully replaces whatever prompt is
+        // configured in the Vapi dashboard, so there is zero risk of the agent
+        // picking up stale or wrong character data.
+        const systemPrompt = buildVapiSystemPrompt(roleplayBankCase)
 
-        if (roleplayBankCase) {
-          contextPrompt = `RESTAURANTE: ${roleplayBankCase.restaurant_name} — ${roleplayBankCase.category}, ${roleplayBankCase.city}
-
-CÓMO ERES Y CÓMO HABLAS:
-${roleplayBankCase.owner_profile}
-
-INFORMACIÓN QUE SABES PERO SOLO REVELAS SI TE HACEN LA PREGUNTA CORRECTA:
-${roleplayBankCase.character_brief}
-
-OBJECIONES QUE DEBES INTRODUCIR A LO LARGO DE LA LLAMADA:
-${roleplayBankCase.key_objections}`.trim()
-        } else {
-          const ownerTitle = rc.owner_gender === 'f' ? 'dueña' : 'dueño'
-          const strategiesText = rc.strategies.map(s =>
-            `- ${s.name}: ROI ${s.roi} — ${s.status === 'active' ? 'ACTIVO' : s.status === 'underused' ? 'SUBUTILIZADO' : 'INACTIVO'}${s.note ? ` (${s.note})` : ''}`
-          ).join('\n')
-          const opportunitiesText = rc.opportunities.map(o => `- ${o}`).join('\n')
-          contextPrompt = `RESTAURANTE: ${rc.restaurant_name} — ${rc.category}, ${rc.city}
-Eres ${rc.owner_name}, ${ownerTitle}. Horario: ${rc.schedule}
-
-MÉTRICAS ACTUALES:
-- Ticket promedio: ${rc.ticket_avg}
-- Pedidos por semana: ${rc.orders_per_week}
-- Tiempo sin cambios: ${rc.inactive_time}
-
-ESTRATEGIAS EN RAPPI:
-${strategiesText}
-
-OPORTUNIDADES QUE EL AE PODRÍA MENCIONAR:
-${opportunitiesText}`.trim()
-        }
-
-        // Inject case context via variableValues — the Vapi agent prompt
-        // must contain {{case_context}} placeholder for this to take effect.
-        // Falls back gracefully (no error) if the placeholder isn't present.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await vapi.start(assistantId, {
-          variableValues: {
-            case_context: contextPrompt,
+          assistantOverrides: {
+            model: {
+              messages: [{ role: 'system', content: systemPrompt }],
+            },
           },
         } as any)
       } catch (e) {
@@ -223,12 +251,13 @@ ${opportunitiesText}`.trim()
 
     return () => {
       cancelled = true
+      if (timerFallbackRef.current) { clearTimeout(timerFallbackRef.current); timerFallbackRef.current = null }
       if (vapiRef.current) {
         try { vapiRef.current.stop() } catch { /* ignore */ }
         vapiRef.current = null
       }
     }
-  }, [voiceProvider]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voiceProvider, startTimer]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Arbol integration ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -253,6 +282,7 @@ ${opportunitiesText}`.trim()
 
         arbolConvIdRef.current = conversationId
         setCallStatus('active')
+        startTimer()
 
         // Poll every 3s for status
         arbolPollRef.current = setInterval(async () => {
@@ -296,11 +326,13 @@ ${opportunitiesText}`.trim()
       try { vapiRef.current.stop() } catch { /* ignore */ }
     }
     playBeep(440, 0.5, 1)
-    setTimeout(() => onDone(), 1500)
+    // Pass the Vapi call ID so AssessmentShell can fetch the transcript
+    setTimeout(() => onDone(vapiCallIdRef.current), 1500)
   }, [onDone])
 
-  // 5-minute countdown
+  // 5-minute countdown — starts only after agent's first word (or 15s fallback)
   useEffect(() => {
+    if (!timerStarted) return
     const interval = setInterval(() => {
       setSecondsLeft(prev => {
         const next = prev - 1
@@ -317,7 +349,7 @@ ${opportunitiesText}`.trim()
       })
     }, 1000)
     return () => clearInterval(interval)
-  }, [finalize])
+  }, [timerStarted, finalize])
 
   const handleMute = () => {
     setIsMuted(m => {

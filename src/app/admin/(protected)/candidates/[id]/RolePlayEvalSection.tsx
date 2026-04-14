@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface MetricResult {
   score: number
@@ -29,6 +29,7 @@ interface Props {
   initialTranscript: string | null
   roleplayVideoPath: string | null
   roleplayCompleted: boolean
+  caseContext?: string | null   // restaurant name + profile + objections for evaluator context
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -41,7 +42,59 @@ const METRIC_LABELS: Record<string, string> = {
 }
 
 const METRIC_MAX: Record<string, number> = {
-  C1: 25, C2: 20, C3: 20, C4: 15, C5: 10, C6: 10,
+  C1: 14, C2: 18, C3: 20, C4: 15, C5: 10, C6: 10,
+}
+
+const VARIABLE_LABELS: Record<string, Record<string, { label: string; max: number }>> = {
+  C1: {
+    identifica_decisor:      { label: 'Identifica decisor',        max: 2 },
+    mapea_decision:          { label: 'Mapea proceso de decisión',  max: 2 },
+    adapta_multiple:         { label: 'Adapta a múltiples decisores', max: 1 },
+    catalogo:                { label: 'Diagnóstico catálogo',       max: 3 },
+    operaciones:             { label: 'Diagnóstico operaciones',    max: 3 },
+    rendimiento_publicidad:  { label: 'Rendimiento publicidad',     max: 3 },
+  },
+  C2: {
+    palanca_correcta:        { label: 'Palanca correcta',          max: 4 },
+    no_vende_innecesario:    { label: 'No vende innecesario',       max: 2 },
+    propuesta_personalizada: { label: 'Propuesta personalizada',   max: 4 },
+    logica_roi:              { label: 'Lógica de ROI',             max: 3 },
+    urgencia_real:           { label: 'Urgencia real',             max: 3 },
+    urgencia_especifica:     { label: 'Urgencia específica',       max: 2 },
+  },
+  C3: {
+    anticipa_objeciones:     { label: 'Anticipa objeciones',       max: 4 },
+    anticipacion_natural:    { label: 'Anticipación natural',      max: 2 },
+    obj_precio:              { label: 'Obj: precio/presupuesto',   max: 2 },
+    obj_como_funciona:       { label: 'Obj: ¿cómo funciona?',      max: 2 },
+    obj_ya_lo_intente:       { label: 'Obj: ya lo intenté',        max: 2 },
+    obj_no_decide:           { label: 'Obj: no soy quien decide',  max: 2 },
+    obj_dejeme_pensar:       { label: 'Obj: déjeme pensar',        max: 2 },
+    tres_caminos:            { label: '3 caminos ante resistencia', max: 2 },
+    persistencia_no_invasiva:{ label: 'Persistencia calibrada',    max: 2 },
+  },
+  C4: {
+    aliado_habla_40pct:      { label: 'Aliado habla ≥40%',         max: 3 },
+    silencios_estrategicos:  { label: 'Silencios estratégicos',    max: 2 },
+    demuestra_escucha:       { label: 'Demuestra escucha',         max: 3 },
+    verifica_comprension:    { label: 'Verifica comprensión',      max: 3 },
+    interes_genuino:         { label: 'Interés genuino',           max: 2 },
+    adapta_tono_lenguaje:    { label: 'Adapta tono y lenguaje',    max: 2 },
+  },
+  C5: {
+    compromiso_fecha:        { label: 'Compromiso con fecha',      max: 4 },
+    recapitula_acuerdos:     { label: 'Recapitula acuerdos',       max: 2 },
+    responsabilidades_ambos: { label: 'Responsabilidades ambos',   max: 2 },
+    metrica_exito:           { label: 'Métrica de éxito definida', max: 2 },
+  },
+  C6: {
+    compostura_aliado_dificil: { label: 'Compostura ante aliado difícil', max: 2 },
+    resiliencia_no_repetido:   { label: 'Resiliencia sin repetirse',      max: 2 },
+    gestiona_tiempo:           { label: 'Gestiona el tiempo',             max: 2 },
+    calidad_bajo_presion:      { label: 'Calidad bajo presión',           max: 1 },
+    mantiene_estructura:       { label: 'Mantiene estructura',            max: 2 },
+    control_no_monopolio:      { label: 'Control sin monopolio',          max: 1 },
+  },
 }
 
 const bandColor = (band: string) => {
@@ -67,6 +120,7 @@ export function RolePlayEvalSection({
   initialTranscript,
   roleplayVideoPath,
   roleplayCompleted,
+  caseContext,
 }: Props) {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState<string | null>(null)
@@ -84,7 +138,7 @@ export function RolePlayEvalSection({
       const res = await fetch('/api/evaluate-roleplay', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ submissionId }),
+        body: JSON.stringify({ submissionId, caseContext: caseContext ?? null }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al evaluar')
@@ -98,6 +152,14 @@ export function RolePlayEvalSection({
       setLoading(false)
     }
   }
+
+  // Auto-trigger evaluation when video exists but no evaluation yet
+  useEffect(() => {
+    if (roleplayVideoPath && !initialEvaluation && !initialScore) {
+      handleEvaluate()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const card: React.CSSProperties = {
     background: 'var(--card)', border: '1px solid var(--border)',
@@ -159,6 +221,20 @@ export function RolePlayEvalSection({
         </div>
       )}
 
+      {/* Pending evaluation banner — shown when video exists but no score yet and not actively loading */}
+      {roleplayVideoPath && !score && !loading && !error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 16px', borderRadius: 10, marginBottom: 16,
+          background: 'rgba(245,158,11,.05)', border: '1px solid rgba(245,158,11,.2)',
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)', flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, fontFamily: 'DM Sans, sans-serif', color: 'var(--dim)' }}>
+            Evaluación IA en proceso… Puede tardar 2–3 minutos. Recarga la página para ver el resultado.
+          </span>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div style={{ padding: 14, borderRadius: 10, background: 'rgba(224,53,84,.06)', border: '1px solid rgba(224,53,84,.2)', color: '#f07090', fontSize: 13, fontFamily: 'DM Sans, sans-serif', marginBottom: 20 }}>
@@ -172,7 +248,7 @@ export function RolePlayEvalSection({
           {/* Total score */}
           <div style={{ flex: '0 0 auto', textAlign: 'center', padding: '20px 32px', borderRadius: 14, background: bc.bg, border: `1px solid ${bc.border}` }}>
             <div style={{ fontFamily: 'Fraunces, serif', fontSize: 52, fontWeight: 700, color: bc.color, lineHeight: 1 }}>{score}</div>
-            <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)', marginTop: 4 }}>/ 100 pts</div>
+            <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)', marginTop: 4 }}>/ 87 pts</div>
           </div>
           {/* Band + stage */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -249,6 +325,36 @@ export function RolePlayEvalSection({
                 {/* Expanded detail */}
                 {isExpanded && (
                   <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${col}20` }}>
+
+                    {/* Per-variable scores */}
+                    {metric.variables && Object.keys(metric.variables).length > 0 && (
+                      <div style={{ marginTop: 14, marginBottom: 6 }}>
+                        <div style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--muted)', marginBottom: 8 }}>
+                          Variables
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {Object.entries(metric.variables).map(([vKey, vScore]) => {
+                            const vDef = VARIABLE_LABELS[key]?.[vKey]
+                            const vMax = vDef?.max ?? 2
+                            const vLabel = vDef?.label ?? vKey.replace(/_/g, ' ')
+                            const vPct = vMax > 0 ? (vScore / vMax) * 100 : 0
+                            const vCol = vPct >= 100 ? 'var(--teal)' : vPct >= 50 ? 'var(--gold)' : vScore > 0 ? '#f59e0b' : 'rgba(255,107,107,.7)'
+                            return (
+                              <div key={vKey} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ flex: 1, fontSize: 11.5, fontFamily: 'DM Sans, sans-serif', color: 'var(--dim)' }}>{vLabel}</div>
+                                <div style={{ width: 60, height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                                  <div style={{ height: '100%', width: `${vPct}%`, background: vCol, borderRadius: 2 }} />
+                                </div>
+                                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, fontWeight: 700, color: vCol, width: 36, textAlign: 'right', flexShrink: 0 }}>
+                                  {vScore}/{vMax}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {metric.penalties !== 0 && (
                       <div style={{ fontSize: 11.5, fontFamily: 'Space Mono, monospace', color: '#ff6b6b', marginBottom: 10, marginTop: 12 }}>
                         ⚠ Penalización aplicada: {metric.penalties} pts
@@ -277,7 +383,11 @@ export function RolePlayEvalSection({
       {/* Transcript viewer */}
       {showTranscript && transcript && (
         <div style={{ marginTop: 20, padding: '16px 20px', borderRadius: 12, background: 'rgba(255,255,255,.02)', border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
-          <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>Transcripción</div>
+          <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 6 }}>Transcripción</div>
+          <div style={{ fontSize: 11, fontFamily: 'DM Sans, sans-serif', color: 'var(--muted)', marginBottom: 12, display: 'flex', gap: 16 }}>
+            <span><strong style={{ color: 'var(--dim)' }}>[CANDIDATO]</strong> = persona evaluada</span>
+            <span><strong style={{ color: 'var(--dim)' }}>[ALIADO]</strong> = agente Vapi (restaurantero)</span>
+          </div>
           <pre style={{ fontSize: 12, fontFamily: 'DM Sans, sans-serif', color: 'var(--dim)', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
             {transcript}
           </pre>

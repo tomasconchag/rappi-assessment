@@ -115,7 +115,11 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
   const gridRef          = useRef<HTMLDivElement>(null)
   const isCommittingRef  = useRef(false)   // prevents double-commit from onBlur after Enter
 
-  const answerKeys = new Set(template.answerCells.map(a => cellKey(a.r, a.c)))
+  // answerKeys = all graded cells + any unlocked intermediate cells (e.g. Q8 ponderados, Q9 ganancias)
+  const answerKeys = new Set([
+    ...template.answerCells.map(a => cellKey(a.r, a.c)),
+    ...template.cells.filter(c => c.locked === false).map(c => cellKey(c.r, c.c)),
+  ])
 
   // ── Countdown timer ────────────────────────────────────────────────────
   const handleSubmitRef = useRef<(() => void) | null>(null)
@@ -138,34 +142,58 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
   }, [])
 
   // ── Evaluate a formula string ──────────────────────────────────────────
-  const evaluate = useCallback((raw: string): string => {
+  // depth guard prevents infinite recursion on circular refs
+  //
+  // Cell coordinate convention (matches CellDef and cellKey):
+  //   row = 0-based row index  (display row N → code row N-1)
+  //   col = 0-based col index  (A=0, B=1, … J=9)
+  //   cellKey(row, col) → `${row}_${col}`
+  const evaluate = useCallback((raw: string, depth = 0): string => {
     const s = raw.startsWith('+') ? '=' + raw.slice(1) : raw
     if (!s.startsWith('=')) return raw
+    if (depth > 10) return '0'
+
+    // Named-parameter signature prevents row/col swap at every call site.
+    const resolveCell = ({ row, col }: { row: number; col: number }): string => {
+      const key = cellKey(row, col)          // row first, col second — always
+      const uv  = values.get(key)
+      if (uv && uv !== '') {
+        if (isFormulaInput(uv)) {
+          // Recursively evaluate the cell's formula, then strip locale formatting
+          const evaled = evaluate(uv, depth + 1)
+          const n = parseFloat(evaled.replace(/\./g, '').replace(/,/g, '.'))
+          return isNaN(n) ? '0' : String(n)
+        }
+        return uv
+      }
+      return String(cellMap.current.get(key)?.v ?? 0)
+    }
+
     try {
       let expr = s.slice(1).toUpperCase()
-      // ── Step 1: expand SUM(A1:B5) BEFORE individual cell refs are replaced ──
-      // If we replaced refs first, "H30" → "150" and SUM would receive "SUM(150:200)"
-      // which can't be parsed as a range.
-      expr = expr.replace(/SUM\(([A-J]\d+):([A-J]\d+)\)/g, (_, sRef, eRef) => {
-        const sc = COLS.indexOf(sRef[0]), sr = parseInt(sRef.slice(1)) - 1
-        const ec = COLS.indexOf(eRef[0]), er = parseInt(eRef.slice(1)) - 1
+
+      // ── Step 1: expand SUM(A1:B5) before individual refs are replaced ────
+      // sRef / eRef look like "H30", "I36", etc.
+      expr = expr.replace(/SUM\(([A-J]\d+):([A-J]\d+)\)/g, (_, sRef: string, eRef: string) => {
+        const startRow = parseInt(sRef.slice(1)) - 1;  const startCol = COLS.indexOf(sRef[0])
+        const endRow   = parseInt(eRef.slice(1)) - 1;  const endCol   = COLS.indexOf(eRef[0])
         let sum = 0
-        for (let row = sr; row <= er; row++)
-          for (let col = sc; col <= ec; col++) {
-            const uv = values.get(cellKey(row, col))
-            const raw = uv && uv !== '' && !isFormulaInput(uv) ? uv : String(cellMap.current.get(cellKey(row, col))?.v ?? 0)
-            const n = parseFloat(raw.replace(/\./g, '').replace(/,/g, '.'))
+        for (let row = startRow; row <= endRow; row++)
+          for (let col = startCol; col <= endCol; col++) {
+            const n = parseFloat(resolveCell({ row, col }).replace(/\./g, '').replace(/,/g, '.'))
             if (!isNaN(n)) sum += n
           }
         return String(sum)
       })
-      // ── Step 2: replace remaining individual cell refs (A1, B3, etc.) ────
-      expr = expr.replace(/([A-J])(\d+)/g, (_m, col, row) => {
-        const c = COLS.indexOf(col), r = parseInt(row) - 1
-        const uv = values.get(cellKey(r, c))
-        if (uv && uv !== '') return isFormulaInput(uv) ? '0' : uv
-        return String(cellMap.current.get(cellKey(r, c))?.v ?? 0)
+
+      // ── Step 2: replace individual cell refs (e.g. F3, H31) ─────────────
+      // In the regex: colLetter is the column letter, rowNum is the 1-based row number.
+      expr = expr.replace(/([A-J])(\d+)/g, (_m, colLetter: string, rowNum: string) => {
+        const row = parseInt(rowNum) - 1   // convert display row → 0-based
+        const col = COLS.indexOf(colLetter) // convert column letter → 0-based index
+        return resolveCell({ row, col })
       })
+
       expr = expr.replace(/(\d+(?:\.\d+)?)%/g, (_, n) => String(Number(n) / 100))
       // eslint-disable-next-line no-new-func
       const result = new Function(`"use strict"; return (${expr})`)()

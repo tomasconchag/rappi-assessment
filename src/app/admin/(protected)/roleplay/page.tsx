@@ -1,7 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { VoiceProviderToggle } from '../settings/VoiceProviderToggle'
-import { RolePlayTestPanel } from './RolePlayTestPanel'
-import { RolePlayBankSelector } from './RolePlayBankSelector'
+import { RolePlayPageClient } from './RolePlayPageClient'
 import type { RoleplayBankEntry } from '@/types/assessment'
 
 export default async function RolePlayPage() {
@@ -52,12 +51,12 @@ export default async function RolePlayPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Test panel — call button + case editor */}
-          <RolePlayTestPanel
+          {/* Unified client component: test panel + case bank share active-case state */}
+          <RolePlayPageClient
             voiceProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
-            activeBankCase={(roleplayCases as RoleplayBankEntry[])?.find(
-              c => c.id === (configData as { active_roleplay_case_id?: string | null }).active_roleplay_case_id
-            ) ?? null}
+            configId={configData.id}
+            initialActiveId={(configData as { active_roleplay_case_id?: string | null }).active_roleplay_case_id ?? null}
+            cases={(roleplayCases as RoleplayBankEntry[]) ?? []}
           />
 
           {/* Voice Provider selector */}
@@ -73,17 +72,6 @@ export default async function RolePlayPage() {
               currentProvider={(configData.voice_provider as 'vapi' | 'arbol') || 'vapi'}
             />
           </div>
-
-          {/* Roleplay case bank */}
-          {roleplayCases && roleplayCases.length > 0 && (
-            <div style={{ ...card, borderTop: '3px solid #f59e0b' }}>
-              <RolePlayBankSelector
-                configId={configData.id}
-                initialActiveId={(configData as { active_roleplay_case_id?: string | null }).active_roleplay_case_id ?? null}
-                cases={roleplayCases as RoleplayBankEntry[]}
-              />
-            </div>
-          )}
 
         </div>
       )}

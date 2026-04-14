@@ -2,20 +2,21 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { CohortEditor } from './CohortEditor'
+import type { CasoBankEntry } from '@/types/assessment'
 import { MembersPanel } from './MembersPanel'
 import { CopyButton } from './CopyButton'
-import type { CasoBankEntry } from '@/types/assessment'
 
 export default async function CohortDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = createAdminClient()
 
-  const [{ data: cohort }, { data: cases }, { data: members }] = await Promise.all([
+  const [{ data: cohort }, { data: cases }, { data: rpCases }, { data: members }] = await Promise.all([
     supabase.from('cohorts').select('*').eq('id', id).single(),
     supabase.from('caso_bank').select('id, title, difficulty').order('sort_order', { ascending: true }),
+    supabase.from('roleplay_bank').select('id, restaurant_name, difficulty').order('created_at', { ascending: true }),
     supabase
       .from('cohort_members')
-      .select('*, caso_bank(title, difficulty)')
+      .select('*')
       .eq('cohort_id', id)
       .order('created_at', { ascending: false }),
   ])
@@ -25,12 +26,7 @@ export default async function CohortDetailPage({ params }: { params: Promise<{ i
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
   const inviteUrl = `${baseUrl}/assessment?c=${cohort.invite_token}`
 
-  // Enrich members with caso info from join
-  const enrichedMembers = (members ?? []).map(m => ({
-    ...m,
-    caso_title: (m.caso_bank as { title: string; difficulty: string } | null)?.title ?? null,
-    caso_difficulty: (m.caso_bank as { title: string; difficulty: string } | null)?.difficulty ?? null,
-  }))
+  const enrichedMembers = members ?? []
 
   return (
     <div style={{ maxWidth: 860 }}>
@@ -92,11 +88,11 @@ export default async function CohortDetailPage({ params }: { params: Promise<{ i
         <CohortEditor
           cohort={cohort}
           cases={(cases ?? []) as Pick<CasoBankEntry, 'id' | 'title' | 'difficulty'>[]}
+          rpCases={(rpCases ?? []) as { id: string; restaurant_name: string; difficulty: string }[]}
         />
         <MembersPanel
           cohortId={id}
           members={enrichedMembers}
-          cases={(cases ?? []) as Pick<CasoBankEntry, 'id' | 'title' | 'difficulty'>[]}
         />
       </div>
     </div>

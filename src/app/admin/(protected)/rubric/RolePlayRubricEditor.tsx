@@ -27,18 +27,14 @@ interface MetricMeta {
   isNew?: boolean
 }
 
-// Known M1-M10 labels
+// Known C1-C6 labels (v4.0 — totals: C1=14, C2=18, C3=20, C4=15, C5=10, C6=10 = 87 pts)
 const KNOWN_METRICS: Record<string, { label: string; color: string }> = {
-  M1:  { label: 'Stakeholder Validation',               color: '#4361ee' },
-  M2:  { label: 'Business & Performance Discovery',     color: '#4361ee' },
-  M3:  { label: 'Problem Framing & Opportunity Sizing', color: '#4361ee' },
-  M4:  { label: 'Solution Proposal — Ads & Markdowns',  color: '#4361ee' },
-  M5:  { label: 'Performance Ownership & Follow-Up',    color: '#4361ee' },
-  M6:  { label: 'Objection Handling',                   color: '#f59e0b' },
-  M7:  { label: 'Active Listening & Adaptability',      color: '#f59e0b' },
-  M8:  { label: 'Product & Platform Knowledge',         color: '#f59e0b' },
-  M9:  { label: 'Legitimate Urgency Generation',        color: '#f59e0b' },
-  M10: { label: 'Presence & Conversation Control',      color: '#f59e0b' },
+  C1: { label: 'Diagnóstico y Venta Consultiva',  color: '#4361ee' },
+  C2: { label: 'Propuesta de Solución',            color: '#4361ee' },
+  C3: { label: 'Manejo de Objeciones',             color: '#f59e0b' },
+  C4: { label: 'Escucha Activa y Empatía',         color: '#f59e0b' },
+  C5: { label: 'Cierre y Seguimiento',             color: '#06d6a0' },
+  C6: { label: 'Componentes Conductuales',         color: '#a855f7' },
 }
 
 const PALETTE = ['#4361ee', '#f59e0b', '#06d6a0', '#e03554', '#a855f7', '#06b6d4', '#f97316']

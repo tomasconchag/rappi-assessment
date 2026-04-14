@@ -8,6 +8,7 @@ interface Props {
   configId: string
   initialActiveId: string | null
   cases: RoleplayBankEntry[]
+  onActiveChange?: (entry: RoleplayBankEntry | null) => void
 }
 
 const difficultyColor = (d: string) => {
@@ -19,7 +20,7 @@ const difficultyColor = (d: string) => {
   return                           { bg: 'rgba(139,92,246,.08)',  border: 'rgba(139,92,246,.2)',   color: '#8b5cf6' }
 }
 
-export function RolePlayBankSelector({ configId, initialActiveId, cases }: Props) {
+export function RolePlayBankSelector({ configId, initialActiveId, cases, onActiveChange }: Props) {
   const [activeId,    setActiveId]    = useState<string | null>(initialActiveId)
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [saving,      setSaving]      = useState(false)
@@ -41,6 +42,7 @@ export function RolePlayBankSelector({ configId, initialActiveId, cases }: Props
         .eq('id', configId)
       if (error) throw error
       setActiveId(selectedId)
+      onActiveChange?.(cases.find(c => c.id === selectedId) ?? null)
       setFlash('Caso de roleplay activado correctamente')
       setTimeout(() => setFlash(null), 3000)
     } catch {
@@ -61,6 +63,7 @@ export function RolePlayBankSelector({ configId, initialActiveId, cases }: Props
         .eq('id', configId)
       if (error) throw error
       setActiveId(null)
+      onActiveChange?.(null)
       setFlash('Caso desactivado — se usará Heladería La Fiore por defecto')
       setTimeout(() => setFlash(null), 3000)
     } catch {

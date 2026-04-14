@@ -26,10 +26,11 @@ export function ChallengesEditor({ configId, initialEnabled, challenges, initial
   )
   const [enabled, setEnabled]   = useState<SectionId[]>(initialEnabled)
   const [baseWeights, setBaseWeights] = useState<Record<SectionId, number>>({
-    sharktank: initialWeights.sharktank ?? DEFAULT_WEIGHTS.sharktank,
-    roleplay:  initialWeights.roleplay  ?? DEFAULT_WEIGHTS.roleplay,
-    caso:      initialWeights.caso      ?? DEFAULT_WEIGHTS.caso,
-    math:      initialWeights.math      ?? DEFAULT_WEIGHTS.math,
+    sharktank:    initialWeights.sharktank    ?? DEFAULT_WEIGHTS.sharktank,
+    roleplay:     initialWeights.roleplay     ?? DEFAULT_WEIGHTS.roleplay,
+    caso:         initialWeights.caso         ?? DEFAULT_WEIGHTS.caso,
+    math:         initialWeights.math         ?? DEFAULT_WEIGHTS.math,
+    cultural_fit: initialWeights.cultural_fit ?? DEFAULT_WEIGHTS.cultural_fit,
   })
   // Raw string values while the user is typing — avoids clamping on every keystroke
   const [weightDraft, setWeightDraft] = useState<Partial<Record<SectionId, string>>>({})

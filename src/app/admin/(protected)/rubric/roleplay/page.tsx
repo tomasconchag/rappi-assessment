@@ -28,18 +28,18 @@ export default async function RubricRolePlayPage() {
       <div style={{ padding: '11px 16px', background: 'rgba(6,214,160,.06)', border: '1px solid rgba(6,214,160,.18)', borderRadius: 9, marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 14 }}>📞</span>
         <span style={{ fontSize: 13, color: 'var(--teal)', fontFamily: 'DM Sans' }}>
-          Transcripción vía <strong>AssemblyAI</strong> (speaker diarization, español) · Evaluación estructurada <strong>M1–M10</strong> con Claude Opus · 100 pts totales
+          Transcripción vía <strong>AssemblyAI</strong> (speaker diarization, español) · Evaluación estructurada <strong>C1–C6</strong> con Claude Opus · 87 pts totales
         </span>
       </div>
 
       {/* Bands reference */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 28 }}>
         {[
-          { label: 'ELITE',             range: '90–100', color: '#06d68a', bg: 'rgba(6,214,138,.08)',  border: 'rgba(6,214,138,.2)' },
-          { label: 'SÓLIDO',            range: '75–89',  color: '#4361ee', bg: 'rgba(67,97,238,.08)', border: 'rgba(67,97,238,.2)' },
-          { label: 'EN DESARROLLO',     range: '60–74',  color: '#f59e0b', bg: 'rgba(245,158,11,.08)', border: 'rgba(245,158,11,.2)' },
-          { label: 'REQUIERE COACHING', range: '40–59',  color: '#e03554', bg: 'rgba(224,53,84,.08)', border: 'rgba(224,53,84,.2)' },
-          { label: 'CRÍTICO',           range: '0–39',   color: '#ff6b6b', bg: 'rgba(255,107,107,.08)', border: 'rgba(255,107,107,.2)' },
+          { label: 'ELITE',             range: '78–87', color: '#06d68a', bg: 'rgba(6,214,138,.08)',  border: 'rgba(6,214,138,.2)' },
+          { label: 'SÓLIDO',            range: '65–77', color: '#4361ee', bg: 'rgba(67,97,238,.08)', border: 'rgba(67,97,238,.2)' },
+          { label: 'EN DESARROLLO',     range: '52–64', color: '#f59e0b', bg: 'rgba(245,158,11,.08)', border: 'rgba(245,158,11,.2)' },
+          { label: 'REQUIERE COACHING', range: '35–51', color: '#e03554', bg: 'rgba(224,53,84,.08)', border: 'rgba(224,53,84,.2)' },
+          { label: 'CRÍTICO',           range: '0–34',  color: '#ff6b6b', bg: 'rgba(255,107,107,.08)', border: 'rgba(255,107,107,.2)' },
         ].map(b => (
           <div key={b.label} style={{ padding: '6px 14px', borderRadius: 100, background: b.bg, border: `1px solid ${b.border}`, display: 'flex', alignItems: 'center', gap: 7 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: b.color }} />

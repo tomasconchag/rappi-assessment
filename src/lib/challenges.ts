@@ -1,4 +1,4 @@
-export type SectionId = 'sharktank' | 'roleplay' | 'caso' | 'math'
+export type SectionId = 'sharktank' | 'roleplay' | 'caso' | 'math' | 'cultural_fit'
 
 export interface ChallengeDefinition {
   id: SectionId
@@ -52,6 +52,16 @@ export const CHALLENGES: ChallengeDefinition[] = [
     colorBorder: 'rgba(6,214,160,.2)',
     weight: 25,
   },
+  {
+    id: 'cultural_fit',
+    label: 'Cultural Fit',
+    icon: '🎙',
+    description: 'Entrevista de 5 minutos con Simón, Team Lead de Brand Development. Evalúa fit cultural con el equipo Rappi BD. Se graba pantalla, cámara y micrófono.',
+    color: '#a855f7',
+    colorBg: 'rgba(168,85,247,.06)',
+    colorBorder: 'rgba(168,85,247,.2)',
+    weight: 0,
+  },
 ]
 
 /** Returns normalized weights for enabled sections (always sum to 100).
@@ -60,7 +70,7 @@ export function normalizedWeights(
   enabled: SectionId[],
   customWeights?: Partial<Record<SectionId, number>>,
 ): Record<SectionId, number> {
-  const result = { sharktank: 0, roleplay: 0, caso: 0, math: 0 }
+  const result = { sharktank: 0, roleplay: 0, caso: 0, math: 0, cultural_fit: 0 }
   const baseWeight = (id: SectionId) => customWeights?.[id] ?? CHALLENGES.find(c => c.id === id)?.weight ?? 0
   const total = enabled.reduce((s, id) => s + baseWeight(id), 0)
   if (total === 0) return result
@@ -72,8 +82,9 @@ export function normalizedWeights(
 
 /** Default base weights keyed by section id */
 export const DEFAULT_WEIGHTS: Record<SectionId, number> = {
-  sharktank: 35,
-  roleplay:  35,
-  caso:      40,
-  math:      25,
+  sharktank:    35,
+  roleplay:     35,
+  caso:         40,
+  math:         25,
+  cultural_fit:  0,
 }

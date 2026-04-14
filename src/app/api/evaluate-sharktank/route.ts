@@ -89,7 +89,22 @@ INSTRUCCIONES:
 
   const raw = message.content[0].type === 'text' ? message.content[0].text : ''
   const jsonMatch = raw.match(/\{[\s\S]*\}/)
-  return JSON.parse(jsonMatch?.[0] || raw)
+  if (!jsonMatch) throw new Error(`Claude no retornó JSON válido. Raw: ${raw.slice(0, 200)}`)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsed: any
+  try {
+    parsed = JSON.parse(jsonMatch[0])
+  } catch (e) {
+    throw new Error(`No se pudo parsear la respuesta de Claude: ${e}. Raw: ${raw.slice(0, 200)}`)
+  }
+
+  // Schema validation — ensure dimensions array exists before returning
+  if (!Array.isArray(parsed.dimensions)) {
+    throw new Error(`Respuesta de Claude incompleta: falta campo "dimensions". Got: ${JSON.stringify(parsed).slice(0, 200)}`)
+  }
+
+  return parsed
 }
 
 // ─── POST: Start evaluation ────────────────────────────────────────────────────

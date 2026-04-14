@@ -1,12 +1,32 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest } from 'next/server'
 
+// Allowed video mime types → file extension
+const ALLOWED_MIME_TYPES: Record<string, string> = {
+  'video/webm':  'webm',
+  'video/mp4':   'mp4',
+  'video/ogg':   'ogv',
+  'video/quicktime': 'mov',
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { candidateEmail, mimeType } = await req.json()
-    const ext = mimeType?.includes('mp4') ? 'mp4' : 'webm'
-    const safeName = candidateEmail.replace('@', '_').replace(/\./g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
-    const path = `${safeName}_${Date.now()}.${ext}`
+    const { candidateEmail, mimeType, section } = await req.json()
+
+    // Validate mime type — reject anything that isn't a known video format
+    const baseMime = (mimeType as string | undefined)?.split(';')[0]?.trim() ?? ''
+    const ext = ALLOWED_MIME_TYPES[baseMime]
+    if (!ext) {
+      return Response.json(
+        { error: `Tipo de archivo no permitido: "${baseMime}". Se esperaba un video.` },
+        { status: 400 },
+      )
+    }
+
+    const safeName  = (candidateEmail as string).replace('@', '_').replace(/\./g, '_').replace(/[^a-zA-Z0-9_-]/g, '')
+    const sectionTag = section ? `_${String(section).replace(/[^a-z0-9]/gi, '')}` : ''
+    // crypto.randomUUID() avoids timestamp collisions under concurrent load
+    const path = `${safeName}${sectionTag}_${Date.now()}_${crypto.randomUUID()}.${ext}`
 
     const supabase = createAdminClient()
     const { data, error } = await supabase.storage

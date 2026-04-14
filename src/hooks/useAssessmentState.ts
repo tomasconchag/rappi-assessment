@@ -8,7 +8,7 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000 // 8 hours
 
 type PersistedState = Pick<AssessmentState,
   'screen' | 'candidate' | 'videoRecorded' | 'videoMimeType' |
-  'roleplayCompleted' |
+  'roleplayCompleted' | 'culturalFitCompleted' |
   'casoIdx' | 'casoAnswers' | 'casoTimings' |
   'mathIdx' | 'mathAnswers' | 'mathTimings'
 >
@@ -23,6 +23,7 @@ function saveSession(state: AssessmentState) {
       videoRecorded: state.videoRecorded,
       videoMimeType: state.videoMimeType,
       roleplayCompleted: state.roleplayCompleted,
+      culturalFitCompleted: state.culturalFitCompleted,
       casoIdx: state.casoIdx,
       casoAnswers: state.casoAnswers,
       casoTimings: state.casoTimings,
@@ -67,6 +68,10 @@ const initialState: AssessmentState = {
   roleplayCompleted: false,
   roleplayVideoBlob: null,
   roleplayVideoMimeType: 'video/webm',
+  roleplayTranscript: null,
+  culturalFitCompleted: false,
+  culturalFitVideoBlob: null,
+  culturalFitVideoMimeType: 'video/webm',
   casoIdx: 0,
   casoAnswers: {},
   casoTimings: {},
@@ -92,7 +97,9 @@ function reducer(state: AssessmentState, action: AssessmentAction): AssessmentSt
     case 'SET_VIDEO':
       return { ...state, videoBlob: action.blob, videoMimeType: action.mimeType, videoRecorded: true }
     case 'SET_ROLEPLAY_DONE':
-      return { ...state, roleplayCompleted: true, roleplayVideoBlob: action.videoBlob, roleplayVideoMimeType: action.mimeType }
+      return { ...state, roleplayCompleted: true, roleplayVideoBlob: action.videoBlob, roleplayVideoMimeType: action.mimeType, roleplayTranscript: action.transcript ?? null }
+    case 'SET_CULTURAL_FIT_DONE':
+      return { ...state, culturalFitCompleted: true, culturalFitVideoBlob: action.videoBlob, culturalFitVideoMimeType: action.mimeType }
     case 'SET_CASO_ANSWER':
       return {
         ...state,
@@ -129,6 +136,7 @@ function getInitialState(): AssessmentState {
     videoRecorded: false, // blob is gone after reload — will need to re-record
     videoMimeType: saved.videoMimeType ?? 'video/webm',
     roleplayCompleted: saved.roleplayCompleted ?? false,
+    culturalFitCompleted: saved.culturalFitCompleted ?? false,
     casoIdx: saved.casoIdx ?? 0,
     casoAnswers: saved.casoAnswers ?? {},
     casoTimings: saved.casoTimings ?? {},

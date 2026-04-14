@@ -38,6 +38,10 @@ export type Screen =
   | 'caso_question'
   | 'math_intro'
   | 'math_question'
+  | 'cultural_fit_intro'
+  | 'cultural_fit_prep'
+  | 'cultural_fit_call'
+  | 'cultural_fit_done'
   | 'completion'
 
 export type SharkScenario = {
@@ -125,6 +129,7 @@ export type AssessmentConfig = {
 }
 
 export type CasoMode = 'global' | 'fixed' | 'random'
+export type RoleplayBankMode = 'global' | 'fixed' | 'random'
 
 export type Cohort = {
   id: string
@@ -141,6 +146,9 @@ export type Cohort = {
   math_mode_override: 'questions' | 'spreadsheet' | null
   voice_provider_override: 'vapi' | 'arbol' | null
   roleplay_case: RoleplayCase | null
+  roleplay_bank_mode: RoleplayBankMode
+  fixed_roleplay_bank_id: string | null
+  roleplay_bank_difficulty_filter: string | null
   created_at: string
 }
 
@@ -189,6 +197,11 @@ export type AssessmentState = {
   roleplayCompleted: boolean
   roleplayVideoBlob: Blob | null
   roleplayVideoMimeType: string
+  roleplayTranscript: string | null   // Vapi transcript captured at call-end
+  // Cultural Fit
+  culturalFitCompleted: boolean
+  culturalFitVideoBlob: Blob | null
+  culturalFitVideoMimeType: string
   // Submission
   submitting: boolean
   submitted: boolean
@@ -207,7 +220,8 @@ export type AssessmentAction =
   | { type: 'SET_MATH_ANSWER'; idx: number; value: string }
   | { type: 'RECORD_MATH_TIMING'; idx: number; timeSpent: number }
   | { type: 'NEXT_MATH' }
-  | { type: 'SET_ROLEPLAY_DONE'; videoBlob: Blob | null; mimeType: string }
+  | { type: 'SET_ROLEPLAY_DONE'; videoBlob: Blob | null; mimeType: string; transcript?: string | null }
+  | { type: 'SET_CULTURAL_FIT_DONE'; videoBlob: Blob | null; mimeType: string }
   | { type: 'SET_SUBMITTING'; value: boolean }
   | { type: 'SET_SUBMITTED'; code?: string }
   | { type: 'SET_SUBMIT_ERROR'; error: string }

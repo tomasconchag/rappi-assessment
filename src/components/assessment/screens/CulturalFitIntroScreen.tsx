@@ -1,30 +1,23 @@
 'use client'
 
-import type { RoleplayBankEntry } from '@/types/assessment'
-
 interface Props {
   onStart: () => void
-  roleplayBankCase?: RoleplayBankEntry | null
 }
 
-const tips = [
-  { emoji: '📊', text: 'Usa los datos — estudia bien el restaurante antes de iniciar la llamada.' },
-  { emoji: '💬', text: 'Sé directo — tienes 5 minutos. Ve al punto rápido.' },
-  { emoji: '🎯', text: 'Propón acciones concretas — no generalices, habla de estrategias específicas de Rappi.' },
-  { emoji: '🔊', text: 'Habla en voz alta — el avatar escucha y responde en tiempo real.' },
+const whatItems = [
+  'Tendrás una entrevista de voz con Simón, Team Lead de Brand Development en Rappi',
+  'Simón te hará una serie de preguntas sobre tu forma de trabajar, tus valores y tu fit con el equipo',
+  'La entrevista dura 5 minutos — responde con honestidad y naturalidad',
 ]
 
-export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
-  const ownerName = roleplayBankCase?.owner_name ?? 'Valentina'
-  const restaurantName = roleplayBankCase?.restaurant_name ?? 'Heladería La Fiore'
-  const ownerLabel = (roleplayBankCase?.owner_gender ?? 'f') === 'f' ? 'dueña' : 'dueño'
-  const avatarLabel = (roleplayBankCase?.owner_gender ?? 'f') === 'f' ? 'la dueña' : 'el dueño'
+const tips = [
+  { emoji: '🎯', text: 'Sé concreto — da ejemplos reales de situaciones que hayas vivido.' },
+  { emoji: '💬', text: 'Habla en voz alta y claro — Simón escucha y responde en tiempo real.' },
+  { emoji: '🧠', text: 'No hay respuestas correctas o incorrectas — buscamos autenticidad.' },
+  { emoji: '⏱', text: 'Gestiona tu tiempo — tienes 5 minutos para la entrevista completa.' },
+]
 
-  const whatItems = [
-    `Vas a tener una llamada de voz con IA que simula ser ${avatarLabel} del restaurante`,
-    'En pantalla tendrás acceso a todos los datos del restaurante (ventas, estrategias activas, oportunidades)',
-    'Tu misión: identificar los problemas y proponer soluciones concretas con herramientas Rappi',
-  ]
+export function CulturalFitIntroScreen({ onStart }: Props) {
   return (
     <div className="anim">
       {/* Header label */}
@@ -33,11 +26,11 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
         fontFamily: 'Space Mono, monospace',
         textTransform: 'uppercase',
         letterSpacing: '1.8px',
-        color: '#f59e0b',
+        color: '#a855f7',
         marginBottom: 18,
         fontWeight: 500,
       }}>
-        ✦ Challenge 2 — Role Play
+        ✦ Último Challenge — Cultural Fit
       </div>
 
       {/* Main intro card */}
@@ -57,7 +50,7 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
           letterSpacing: '-.5px',
           color: 'var(--text)',
         }}>
-          Llamada con el dueño del restaurante
+          Entrevista con Simón
         </h2>
         <p style={{
           fontSize: 14.5,
@@ -66,26 +59,26 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
           marginBottom: 0,
           fontFamily: 'DM Sans, sans-serif',
         }}>
-          Tienes 5 minutos para convencer a <strong style={{ color: 'var(--text)' }}>{ownerName}</strong>, {ownerLabel} de {restaurantName}, de implementar nuevas estrategias en Rappi.
+          Esta es la última etapa del proceso. Vas a tener una conversación con <strong style={{ color: 'var(--text)' }}>Simón</strong>, Team Lead de Brand Development, quien evaluará tu fit cultural con el equipo de Rappi.
         </p>
       </div>
 
       {/* What it consists of */}
       <div className="anim1" style={{
         background: 'var(--card)',
-        border: '1px solid rgba(245,158,11,.2)',
-        borderLeft: '3px solid #f59e0b',
+        border: '1px solid rgba(168,85,247,.2)',
+        borderLeft: '3px solid #a855f7',
         borderRadius: 'var(--r)',
         padding: '28px 32px',
         marginBottom: 20,
-        boxShadow: '0 0 30px rgba(245,158,11,.06), inset 0 1px 0 rgba(255,255,255,.04)',
+        boxShadow: '0 0 30px rgba(168,85,247,.06), inset 0 1px 0 rgba(255,255,255,.04)',
       }}>
         <div style={{
           fontSize: 10,
           fontFamily: 'Space Mono, monospace',
           textTransform: 'uppercase',
           letterSpacing: '1.5px',
-          color: '#f59e0b',
+          color: '#a855f7',
           marginBottom: 16,
           fontWeight: 500,
         }}>
@@ -109,8 +102,8 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
                 width: 22,
                 height: 22,
                 borderRadius: '50%',
-                background: 'rgba(245,158,11,.14)',
-                color: '#f59e0b',
+                background: 'rgba(168,85,247,.14)',
+                color: '#a855f7',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -145,7 +138,7 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
           marginBottom: 16,
           fontWeight: 500,
         }}>
-          Tips para la llamada
+          Tips para la entrevista
         </div>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {tips.map((tip, i) => (
@@ -167,23 +160,23 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
         </ul>
       </div>
 
-      {/* Flow hint */}
+      {/* Info note */}
       <div className="anim3" style={{
-        background: 'rgba(245,158,11,.06)',
-        border: '1px solid rgba(245,158,11,.2)',
+        background: 'rgba(168,85,247,.06)',
+        border: '1px solid rgba(168,85,247,.2)',
         borderRadius: 10,
         padding: '14px 20px',
         marginBottom: 32,
         fontSize: 13,
         fontFamily: 'DM Sans, sans-serif',
-        color: '#f59e0b',
+        color: '#a855f7',
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
       }}>
-        <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>🎙</span>
         <span>
-          <strong>Primero tendrás 5 minutos para revisar los datos del restaurante.</strong> El tiempo de la llamada empieza solo cuando tú lo indiques.
+          <strong>Se grabará tu cámara, micrófono y pantalla</strong> durante toda la entrevista para el proceso de evaluación.
         </span>
       </div>
 
@@ -197,29 +190,29 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
             gap: 10,
             padding: '16px 40px',
             borderRadius: 'var(--rs)',
-            background: 'linear-gradient(140deg, #f59e0b 0%, #d97706 100%)',
+            background: 'linear-gradient(140deg, #a855f7 0%, #7c3aed 100%)',
             color: '#fff',
             fontFamily: 'DM Sans, sans-serif',
             fontSize: 15,
             fontWeight: 700,
             letterSpacing: '.3px',
-            border: '1px solid rgba(245,158,11,.25)',
+            border: '1px solid rgba(168,85,247,.25)',
             cursor: 'pointer',
-            boxShadow: '0 4px 22px rgba(245,158,11,.32), inset 0 1px 0 rgba(255,255,255,.12)',
+            boxShadow: '0 4px 22px rgba(168,85,247,.32), inset 0 1px 0 rgba(255,255,255,.12)',
             transition: 'transform .2s cubic-bezier(.16,1,.3,1), box-shadow .25s ease',
           }}
           onMouseEnter={e => {
             const el = e.currentTarget as HTMLButtonElement
             el.style.transform = 'translateY(-2px) scale(1.005)'
-            el.style.boxShadow = '0 8px 28px rgba(245,158,11,.48), inset 0 1px 0 rgba(255,255,255,.12)'
+            el.style.boxShadow = '0 8px 28px rgba(168,85,247,.48), inset 0 1px 0 rgba(255,255,255,.12)'
           }}
           onMouseLeave={e => {
             const el = e.currentTarget as HTMLButtonElement
             el.style.transform = ''
-            el.style.boxShadow = '0 4px 22px rgba(245,158,11,.32), inset 0 1px 0 rgba(255,255,255,.12)'
+            el.style.boxShadow = '0 4px 22px rgba(168,85,247,.32), inset 0 1px 0 rgba(255,255,255,.12)'
           }}
         >
-          Ver datos del restaurante →
+          Iniciar entrevista →
         </button>
       </div>
     </div>
