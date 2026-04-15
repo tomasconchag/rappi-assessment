@@ -219,7 +219,17 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
             } else if (typeof e === 'string') {
               msg = e
             }
-            setCallError(`Vapi: ${msg}`)
+            // Detect Vapi concurrent-call-limit / capacity errors
+            const msgLower = msg.toLowerCase()
+            const isCapacityError = msgLower.includes('concurren') || msgLower.includes('concurrent')
+              || msgLower.includes('limit') || msgLower.includes('capacity')
+              || msgLower.includes('too many') || msgLower.includes('unavailable')
+              || msgLower.includes('busy') || msgLower.includes('429')
+            if (isCapacityError) {
+              setCallError('El servicio de llamadas está ocupado en este momento. Espera 1–2 minutos e intenta de nuevo.')
+            } else {
+              setCallError(`Error en la llamada: ${msg}`)
+            }
             setCallStatus('ended')
           }
         })
@@ -241,7 +251,16 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : String(e)
-          setCallError(`No se pudo iniciar la llamada: ${msg}`)
+          const msgLower = msg.toLowerCase()
+          const isCapacityError = msgLower.includes('concurren') || msgLower.includes('concurrent')
+            || msgLower.includes('limit') || msgLower.includes('capacity')
+            || msgLower.includes('too many') || msgLower.includes('unavailable')
+            || msgLower.includes('busy') || msgLower.includes('429')
+          if (isCapacityError) {
+            setCallError('El servicio de llamadas está ocupado en este momento. Espera 1–2 minutos e intenta de nuevo.')
+          } else {
+            setCallError(`No se pudo iniciar la llamada: ${msg}`)
+          }
           setCallStatus('ended')
         }
       }

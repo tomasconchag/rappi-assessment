@@ -253,8 +253,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Caso Práctico: always evaluate (runs in parallel for all 4 questions ~6s)
+    // Jitter helper: random delay 0–maxMs to distribute concurrent eval calls.
+    // At 200 simultaneous submissions the 4 after() blocks would otherwise fire
+    // 800 Claude/AssemblyAI requests within seconds and saturate rate limits.
+    const jitter = (maxMs: number) => new Promise(r => setTimeout(r, Math.random() * maxMs))
+
+    // Caso Práctico: always evaluate. Spread over 20s.
     after(async () => {
+      await jitter(20_000)
       await evalWithRetry(`${evalBase}/api/evaluate-caso`, { submissionId }, 'Auto caso eval')
     })
     // RolePlay: if completed and either video uploaded or transcript provided
@@ -263,6 +269,7 @@ export async function POST(req: NextRequest) {
       const rpCandEmail = email   // already lowercased above
       const rpBankCaseId = roleplayBankCaseId ?? null
       after(async () => {
+        await jitter(30_000)   // spread over 30s — AssemblyAI + Claude, slowest path
         try {
           // Build case context so the evaluator knows which restaurant was assigned
           let caseContext: string | null = null
@@ -297,9 +304,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Cultural Fit: update columns + trigger evaluation
+    // Cultural Fit: update columns + trigger evaluation. Spread over 25s.
     if (culturalFitCompleted) {
       after(async () => {
+        await jitter(25_000)
         try {
           // Update cultural_fit columns (not in atomic RPC)
           await supabase.from('submissions').update({
@@ -312,9 +320,10 @@ export async function POST(req: NextRequest) {
         } catch (err) { console.error('Auto cultural fit eval error:', err) }
       })
     }
-    // SharkTank: only if video was recorded (starts AssemblyAI transcription job)
+    // SharkTank: only if video was recorded (starts AssemblyAI transcription job). Spread over 20s.
     if (videoRecorded) {
       after(async () => {
+        await jitter(20_000)
         await evalWithRetry(`${evalBase}/api/evaluate-sharktank`, { submissionId }, 'Auto sharktank eval')
       })
     }

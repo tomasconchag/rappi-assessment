@@ -99,17 +99,23 @@ type SortKey = 'date' | 'overall' | 'math' | 'caso' | 'roleplay'
 type SortDir = 'asc' | 'desc'
 type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
 
-export function CandidatesTable({ submissions }: { submissions: Submission[] }) {
+const PAGE_SIZE = 50
+
+export function CandidatesTable({ submissions, totalCount }: { submissions: Submission[]; totalCount?: number }) {
   const [query,       setQuery]       = useState('')
   const [sortKey,     setSortKey]     = useState<SortKey>('date')
   const [sortDir,     setSortDir]     = useState<SortDir>('desc')
   const [fraudFilter, setFraudFilter] = useState<FraudFilter>('all')
   const [minScore,    setMinScore]    = useState('')
+  const [page,        setPage]        = useState(0)
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('desc') }
+    setPage(0)
   }
+
+  const handleFilterChange = (fn: () => void) => { fn(); setPage(0) }
 
   const sortIcon = (key: SortKey) => sortKey === key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ' ↕'
 
@@ -134,6 +140,9 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
       else if (sortKey === 'roleplay') { va = a.roleplay_score ?? 0;  vb = b.roleplay_score ?? 0 }
       return sortDir === 'desc' ? vb - va : va - vb
     })
+
+  const totalPages  = Math.ceil(filtered.length / PAGE_SIZE)
+  const paginated   = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   // ── Summary stats ────────────────────────────────────────────────────────
   const total        = submissions.length
@@ -207,7 +216,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         <input
           type="text"
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={e => handleFilterChange(() => setQuery(e.target.value))}
           placeholder="Buscar por nombre o email..."
           style={{
             width: '100%',
@@ -227,7 +236,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         />
         {query && (
           <button
-            onClick={() => setQuery('')}
+            onClick={() => { setQuery(''); setPage(0) }}
             style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1, padding: 2 }}
           >
             ×
@@ -240,7 +249,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         {/* Fraud filter */}
         <select
           value={fraudFilter}
-          onChange={e => setFraudFilter(e.target.value as FraudFilter)}
+          onChange={e => handleFilterChange(() => setFraudFilter(e.target.value as FraudFilter))}
           style={{
             padding: '8px 12px', borderRadius: 8, fontSize: 12,
             background: 'var(--card)', border: '1px solid var(--border)',
@@ -260,7 +269,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
           <input
             type="number" min={0} max={100}
             value={minScore}
-            onChange={e => setMinScore(e.target.value)}
+            onChange={e => handleFilterChange(() => setMinScore(e.target.value))}
             placeholder="—"
             style={{
               width: 56, padding: '7px 10px', borderRadius: 7, fontSize: 12,
@@ -275,7 +284,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
         {/* Clear filters */}
         {(fraudFilter !== 'all' || minScore) && (
           <button
-            onClick={() => { setFraudFilter('all'); setMinScore('') }}
+            onClick={() => { setFraudFilter('all'); setMinScore(''); setPage(0) }}
             style={{
               padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
               background: 'transparent', border: '1px solid var(--border)',
@@ -328,7 +337,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: '56px 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
@@ -337,7 +346,7 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
                     </div>
                   </td>
                 </tr>
-              ) : filtered.map(s => {
+              ) : paginated.map(s => {
                 const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
                 const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
                 const date = s.completed_at
@@ -515,10 +524,45 @@ export function CandidatesTable({ submissions }: { submissions: Submission[] }) 
 
         {/* ── FOOTER ────────────────────────────────────────────────────── */}
         {filtered.length > 0 && (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
-              {filtered.length} de {submissions.length} candidatos
-            </span>
+          <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            {/* Left: count + pagination */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
+                {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}{totalCount != null && totalCount > submissions.length ? ` (mostrando ${submissions.length} de ${totalCount})` : ''}
+              </span>
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button
+                    disabled={page === 0}
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, fontSize: 12,
+                      background: page === 0 ? 'transparent' : 'var(--card)',
+                      border: '1px solid var(--border)',
+                      color: page === 0 ? 'var(--muted)' : 'var(--text)',
+                      cursor: page === 0 ? 'default' : 'pointer',
+                      fontFamily: 'Space Mono, monospace',
+                    }}
+                  >←</button>
+                  <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--muted)', padding: '0 4px' }}>
+                    {page + 1} / {totalPages}
+                  </span>
+                  <button
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, fontSize: 12,
+                      background: page >= totalPages - 1 ? 'transparent' : 'var(--card)',
+                      border: '1px solid var(--border)',
+                      color: page >= totalPages - 1 ? 'var(--muted)' : 'var(--text)',
+                      cursor: page >= totalPages - 1 ? 'default' : 'pointer',
+                      fontFamily: 'Space Mono, monospace',
+                    }}
+                  >→</button>
+                </div>
+              )}
+            </div>
+            {/* Right: export */}
             <button
               onClick={() => exportCSV(submissions)}
               style={{

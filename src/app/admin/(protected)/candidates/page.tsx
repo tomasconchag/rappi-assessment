@@ -4,7 +4,7 @@ import { CandidatesTable } from './CandidatesTable'
 export default async function CandidatesPage() {
   const supabase = createAdminClient()
 
-  const { data: submissions } = await supabase
+  const { data: submissions, count } = await supabase
     .from('submissions')
     .select(`
       id, completed_at, overall_score_pct, math_score_pct, caso_score_pct,
@@ -13,9 +13,10 @@ export default async function CandidatesPage() {
       enabled_sections, challenge_weights, status,
       candidates ( name, email, cedula ),
       proctoring_reports ( fraud_score, fraud_level )
-    `)
+    `, { count: 'exact' })
     .eq('status', 'completed')
     .order('completed_at', { ascending: false })
+    .limit(500)
 
   return (
     <div>
@@ -25,7 +26,7 @@ export default async function CandidatesPage() {
         <p style={{ fontSize: 15, color: 'var(--dim)' }}>{submissions?.length || 0} assessments completados</p>
       </div>
 
-      <CandidatesTable submissions={(submissions || []) as any} />
+      <CandidatesTable submissions={(submissions || []) as any} totalCount={count ?? (submissions?.length || 0)} />
     </div>
   )
 }
