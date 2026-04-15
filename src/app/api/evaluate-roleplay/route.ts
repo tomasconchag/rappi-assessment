@@ -236,7 +236,7 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
   if (submitError) throw new Error(`AssemblyAI submit error: ${submitError}`)
 
   // Poll until done
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 100; i++) {  // 100 × 3s = 300s max (was 180s — increased for 200 concurrent users)
     await new Promise(r => setTimeout(r, 3000))
     const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
       headers: { authorization: apiKey },
@@ -269,19 +269,25 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { submissionId, caseContext } = await req.json()
+    const { submissionId, caseContext, force = false } = await req.json()
     if (!submissionId) return Response.json({ error: 'submissionId requerido' }, { status: 400 })
 
     const supabase = createAdminClient()
 
-    // Get submission
+    // Get submission — also read roleplay_score for idempotency check
     const { data: sub, error: subErr } = await supabase
       .from('submissions')
-      .select('id, roleplay_video_path, roleplay_completed, roleplay_transcript')
+      .select('id, roleplay_video_path, roleplay_completed, roleplay_transcript, roleplay_score, math_score_pct, caso_score_pct, enabled_sections, challenge_weights')
       .eq('id', submissionId)
       .single()
 
     if (subErr || !sub) return Response.json({ error: 'Submission no encontrada' }, { status: 404 })
+
+    // Idempotency: skip if already evaluated (unless force=true)
+    if (!force && sub.roleplay_score != null) {
+      console.log('[evaluate-roleplay] already evaluated, skipping (use force=true to re-evaluate)')
+      return Response.json({ skipped: true, roleplay_score: sub.roleplay_score })
+    }
 
     // If transcript already set (from Vapi/Arbol), skip AssemblyAI
     let transcript = sub.roleplay_transcript || ''
@@ -298,8 +304,12 @@ export async function POST(req: NextRequest) {
       console.log('[evaluate-roleplay] transcribing via AssemblyAI...')
       transcript = await transcribeWithAssemblyAI(urlData.signedUrl)
       if (!transcript) return Response.json({ error: 'La transcripción está vacía' }, { status: 422 })
+
+      // Save transcript to DB immediately — so retries can skip AssemblyAI even if Claude fails later
+      await supabase.from('submissions').update({ roleplay_transcript: transcript }).eq('id', submissionId)
+      console.log('[evaluate-roleplay] transcript saved to DB')
     } else {
-      console.log('[evaluate-roleplay] using existing transcript (Vapi/Arbol)')
+      console.log('[evaluate-roleplay] using existing transcript (Vapi/Arbol/previous attempt)')
     }
 
     // Evaluate with Claude
@@ -366,6 +376,29 @@ export async function POST(req: NextRequest) {
     if (updateErr) {
       console.error('[evaluate-roleplay] DB update error:', updateErr.message)
       return Response.json({ error: updateErr.message }, { status: 500 })
+    }
+
+    // Recalculate and persist overall_score_pct including the new roleplay score.
+    // normalizedWeights handles any enabled_sections combination correctly.
+    try {
+      const { normalizedWeights } = await import('@/lib/challenges')
+      const enabled = (sub.enabled_sections as string[] | null) ?? ['roleplay', 'caso', 'math']
+      const weights = normalizedWeights(enabled as import('@/lib/challenges').SectionId[], (sub.challenge_weights as Record<string, number> | null) ?? undefined)
+      const scores: Record<string, number> = {
+        roleplay:     evaluation.total as number,
+        caso:         (sub as Record<string, unknown>).caso_score_pct as number ?? 0,
+        math:         (sub as Record<string, unknown>).math_score_pct as number ?? 0,
+      }
+      const newOverall = Math.round(
+        enabled.reduce((sum, sec) => {
+          const w = weights[sec as import('@/lib/challenges').SectionId] ?? 0
+          return sum + (scores[sec] ?? 0) * (w / 100)
+        }, 0)
+      )
+      await supabase.from('submissions').update({ overall_score_pct: newOverall }).eq('id', submissionId)
+      console.log(`[evaluate-roleplay] overall_score_pct updated to ${newOverall}`)
+    } catch (overallErr) {
+      console.warn('[evaluate-roleplay] could not update overall_score_pct:', overallErr)
     }
 
     return Response.json({ evaluation, transcript })

@@ -394,8 +394,14 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           if (roleplayUploadRes.ok) {
             const { signedUrl, path } = await roleplayUploadRes.json()
             const baseRoleplayMime = state.roleplayVideoMimeType.split(';')[0] || 'video/webm'
-            const putRes = await fetch(signedUrl, { method: 'PUT', body: state.roleplayVideoBlob, headers: { 'Content-Type': baseRoleplayMime } })
-            if (putRes.ok) roleplayVideoPath = path
+            // Retry upload up to 2 times (same pattern as SharkTank video)
+            let roleplayPutOk = false
+            for (let attempt = 0; attempt < 2 && !roleplayPutOk; attempt++) {
+              const putRes = await fetch(signedUrl, { method: 'PUT', body: state.roleplayVideoBlob, headers: { 'Content-Type': baseRoleplayMime } })
+              roleplayPutOk = putRes.ok
+              if (!roleplayPutOk) console.error(`Roleplay video PUT attempt ${attempt + 1} failed:`, putRes.status)
+            }
+            if (roleplayPutOk) roleplayVideoPath = path
           }
         } catch (uploadErr) {
           console.error('Roleplay video upload error:', uploadErr)
@@ -414,8 +420,14 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           if (cfUploadRes.ok) {
             const { signedUrl, path } = await cfUploadRes.json()
             const baseCfMime = state.culturalFitVideoMimeType.split(';')[0] || 'video/webm'
-            const putRes = await fetch(signedUrl, { method: 'PUT', body: state.culturalFitVideoBlob, headers: { 'Content-Type': baseCfMime } })
-            if (putRes.ok) culturalFitVideoPath = path
+            // Retry upload up to 2 times
+            let cfPutOk = false
+            for (let attempt = 0; attempt < 2 && !cfPutOk; attempt++) {
+              const putRes = await fetch(signedUrl, { method: 'PUT', body: state.culturalFitVideoBlob, headers: { 'Content-Type': baseCfMime } })
+              cfPutOk = putRes.ok
+              if (!cfPutOk) console.error(`Cultural fit video PUT attempt ${attempt + 1} failed:`, putRes.status)
+            }
+            if (cfPutOk) culturalFitVideoPath = path
           }
         } catch (uploadErr) {
           console.error('Cultural fit video upload error:', uploadErr)

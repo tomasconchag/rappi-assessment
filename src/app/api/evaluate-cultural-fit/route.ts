@@ -145,7 +145,7 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
   const { id, error: submitError } = await submitRes.json()
   if (submitError) throw new Error(`AssemblyAI submit error: ${submitError}`)
 
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 100; i++) {  // 100 × 3s = 300s max (was 180s — increased for 200 concurrent users)
     await new Promise(r => setTimeout(r, 3000))
     const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
       headers: { authorization: apiKey },
@@ -175,18 +175,25 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { submissionId } = await req.json()
+    const { submissionId, force = false } = await req.json()
     if (!submissionId) return Response.json({ error: 'submissionId requerido' }, { status: 400 })
 
     const supabase = createAdminClient()
 
     const { data: sub, error: subErr } = await supabase
       .from('submissions')
-      .select('id, cultural_fit_video_path, cultural_fit_completed, cultural_fit_transcript')
+      .select('id, cultural_fit_video_path, cultural_fit_completed, cultural_fit_transcript, cultural_fit_score, roleplay_score, math_score_pct, caso_score_pct, enabled_sections, challenge_weights')
       .eq('id', submissionId)
       .single()
 
     if (subErr || !sub) return Response.json({ error: 'Submission no encontrada' }, { status: 404 })
+
+    // Idempotency: skip if already evaluated (unless force=true)
+    const existingScore = (sub as Record<string, unknown>).cultural_fit_score
+    if (!force && existingScore != null) {
+      console.log('[evaluate-cultural-fit] already evaluated, skipping (use force=true to re-evaluate)')
+      return Response.json({ skipped: true, cultural_fit_score: existingScore })
+    }
 
     let transcript = (sub as Record<string, unknown>).cultural_fit_transcript as string || ''
     if (!transcript) {
@@ -201,6 +208,10 @@ export async function POST(req: NextRequest) {
       console.log('[evaluate-cultural-fit] transcribing via AssemblyAI...')
       transcript = await transcribeWithAssemblyAI(urlData.signedUrl)
       if (!transcript) return Response.json({ error: 'La transcripción está vacía' }, { status: 422 })
+
+      // Save transcript immediately — so retries can skip AssemblyAI even if Claude fails later
+      await supabase.from('submissions').update({ cultural_fit_transcript: transcript }).eq('id', submissionId)
+      console.log('[evaluate-cultural-fit] transcript saved to DB')
     } else {
       console.log('[evaluate-cultural-fit] using existing transcript')
     }
@@ -261,6 +272,30 @@ export async function POST(req: NextRequest) {
     if (updateErr) {
       console.error('[evaluate-cultural-fit] DB update error:', updateErr.message)
       return Response.json({ error: updateErr.message }, { status: 500 })
+    }
+
+    // Recalculate and persist overall_score_pct including the new cultural_fit score.
+    // cultural_fit has weight 0 by default but cohorts can override — normalizedWeights handles it.
+    try {
+      const { normalizedWeights } = await import('@/lib/challenges')
+      const enabled = ((sub as Record<string, unknown>).enabled_sections as string[] | null) ?? ['caso', 'math']
+      const weights = normalizedWeights(enabled as import('@/lib/challenges').SectionId[], ((sub as Record<string, unknown>).challenge_weights as Record<string, number> | null) ?? undefined)
+      const scores: Record<string, number> = {
+        cultural_fit: evaluation.total as number,
+        roleplay:     ((sub as Record<string, unknown>).roleplay_score   as number | null) ?? 0,
+        caso:         ((sub as Record<string, unknown>).caso_score_pct   as number | null) ?? 0,
+        math:         ((sub as Record<string, unknown>).math_score_pct   as number | null) ?? 0,
+      }
+      const newOverall = Math.round(
+        enabled.reduce((sum, sec) => {
+          const w = weights[sec as import('@/lib/challenges').SectionId] ?? 0
+          return sum + (scores[sec] ?? 0) * (w / 100)
+        }, 0)
+      )
+      await supabase.from('submissions').update({ overall_score_pct: newOverall }).eq('id', submissionId)
+      console.log(`[evaluate-cultural-fit] overall_score_pct updated to ${newOverall}`)
+    } catch (overallErr) {
+      console.warn('[evaluate-cultural-fit] could not update overall_score_pct:', overallErr)
     }
 
     return Response.json({ evaluation, transcript })
