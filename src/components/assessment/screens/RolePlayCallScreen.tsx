@@ -234,16 +234,15 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           }
         })
 
-        // Build the complete system prompt from the bank case and inject it
-        // via assistantOverrides — this fully replaces whatever prompt is
-        // configured in the Vapi dashboard, so there is zero risk of the agent
-        // picking up stale or wrong character data.
+        // Inject the full system prompt via variableValues.
+        // The Vapi assistant's system prompt must contain {{system_prompt}}.
+        // This avoids specifying model.provider (which varies per account).
         const systemPrompt = buildVapiSystemPrompt(roleplayBankCase)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await vapi.start(assistantId, {
-          model: {
-            messages: [{ role: 'system', content: systemPrompt }],
+          variableValues: {
+            system_prompt: systemPrompt,
           },
         } as any)
       } catch (e) {
