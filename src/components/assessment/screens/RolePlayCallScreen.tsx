@@ -234,15 +234,21 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
           }
         })
 
-        // Inject the full system prompt via variableValues.
-        // The Vapi assistant's system prompt must contain {{system_prompt}}.
-        // This avoids specifying model.provider (which varies per account).
-        const systemPrompt = buildVapiSystemPrompt(roleplayBankCase)
+        // Inject case context via variableValues into the {{case_context}} placeholder
+        // already defined in the Vapi assistant's system prompt on the dashboard.
+        const caseContext = `RESTAURANTE: ${roleplayBankCase.restaurant_name} — ${roleplayBankCase.category}, ${roleplayBankCase.city}
+Eres ${roleplayBankCase.owner_name}. ${roleplayBankCase.owner_profile}
+
+INFORMACIÓN QUE SOLO REVELAS SI TE PREGUNTAN:
+${roleplayBankCase.character_brief}
+
+OBJECIONES QUE INTRODUCES DE FORMA NATURAL:
+${roleplayBankCase.key_objections}`.trim()
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await vapi.start(assistantId, {
           variableValues: {
-            system_prompt: systemPrompt,
+            case_context: caseContext,
           },
         } as any)
       } catch (e) {
