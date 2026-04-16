@@ -59,7 +59,7 @@ export function RolePlayDoneScreen({ onNext }: Props) {
         maxWidth: 420,
         margin: '0 auto 12px',
       }}>
-        Tu conversación con Valentina ha concluido. El equipo de Rappi revisará tu desempeño en la llamada.
+        Tu llamada de roleplay ha concluido. El equipo de Rappi revisará tu desempeño en la conversación con el restaurante.
       </p>
 
       <p style={{

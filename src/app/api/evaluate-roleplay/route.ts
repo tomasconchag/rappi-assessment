@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-export const maxDuration = 300
+export const maxDuration = 360  // 300s AssemblyAI polling + 60s headroom for Claude
 
 const RUBRIC_SYSTEM_PROMPT = `Eres el Agente Evaluador Oficial de Rappi Brand Development. Tu único rol es evaluar transcripciones de llamadas de roleplay de candidatos a Farmer usando el framework de Evaluación v4.0.
 

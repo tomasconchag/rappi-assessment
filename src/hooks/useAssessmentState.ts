@@ -8,10 +8,18 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000 // 8 hours
 
 type PersistedState = Pick<AssessmentState,
   'screen' | 'candidate' | 'videoRecorded' | 'videoMimeType' |
-  'roleplayCompleted' | 'culturalFitCompleted' |
+  'roleplayCompleted' | 'roleplayTranscript' | 'culturalFitCompleted' |
   'casoIdx' | 'casoAnswers' | 'casoTimings' |
   'mathIdx' | 'mathAnswers' | 'mathTimings'
 >
+
+// Screens where the MediaRecorder is required but cannot be restored after a page reload.
+// Restoring to these screens causes broken state (recorder gone, Vapi restarts but no video).
+// We redirect to the safe prep screen instead so the user restarts cleanly.
+const UNSAFE_RESTORE_SCREENS: Record<string, string> = {
+  roleplay_call:    'roleplay_prep',
+  cultural_fit_call: 'cultural_fit_prep',
+}
 
 function saveSession(state: AssessmentState) {
   if (typeof window === 'undefined') return
@@ -23,6 +31,7 @@ function saveSession(state: AssessmentState) {
       videoRecorded: state.videoRecorded,
       videoMimeType: state.videoMimeType,
       roleplayCompleted: state.roleplayCompleted,
+      roleplayTranscript: state.roleplayTranscript,
       culturalFitCompleted: state.culturalFitCompleted,
       casoIdx: state.casoIdx,
       casoAnswers: state.casoAnswers,
@@ -128,14 +137,18 @@ function reducer(state: AssessmentState, action: AssessmentAction): AssessmentSt
 function getInitialState(): AssessmentState {
   const saved = loadSession()
   if (!saved || !saved.candidate?.email) return initialState
-  // Restore persisted fields — video blob is gone, but answers are preserved
+  // Screens that require MediaRecorder cannot be restored — redirect to their prep screen
+  const rawScreen = saved.screen ?? 'welcome'
+  const safeScreen = UNSAFE_RESTORE_SCREENS[rawScreen] ?? rawScreen
+  // Restore persisted fields — video/audio blobs are gone after reload, but answers are preserved
   return {
     ...initialState,
-    screen: saved.screen ?? 'welcome',
+    screen: safeScreen as AssessmentState['screen'],
     candidate: saved.candidate ?? initialState.candidate,
     videoRecorded: false, // blob is gone after reload — will need to re-record
     videoMimeType: saved.videoMimeType ?? 'video/webm',
     roleplayCompleted: saved.roleplayCompleted ?? false,
+    roleplayTranscript: saved.roleplayTranscript ?? null,  // preserved — survives reload
     culturalFitCompleted: saved.culturalFitCompleted ?? false,
     casoIdx: saved.casoIdx ?? 0,
     casoAnswers: saved.casoAnswers ?? {},

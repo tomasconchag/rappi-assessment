@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-export const maxDuration = 120
+export const maxDuration = 360  // 300s AssemblyAI polling + 60s headroom for Claude
 
 const CULTURAL_FIT_SYSTEM_PROMPT = `Eres el Agente Evaluador Oficial de Rappi Brand Development para entrevistas de Cultural Fit.
 Tu rol es evaluar transcripciones de entrevistas de candidatos con Simón (Team Lead de Brand Development).
