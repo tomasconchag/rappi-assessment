@@ -242,10 +242,8 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await vapi.start(assistantId, {
-          assistantOverrides: {
-            model: {
-              messages: [{ role: 'system', content: systemPrompt }],
-            },
+          model: {
+            messages: [{ role: 'system', content: systemPrompt }],
           },
         } as any)
       } catch (e) {
