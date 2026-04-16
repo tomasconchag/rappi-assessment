@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-export const maxDuration = 360  // 300s AssemblyAI polling + 60s headroom for Claude
+export const maxDuration = 300  // max allowed on Vercel Hobby plan
 
 const RUBRIC_SYSTEM_PROMPT = `Eres el Agente Evaluador Oficial de Rappi Brand Development. Tu único rol es evaluar transcripciones de llamadas de roleplay de candidatos a Farmer usando el framework de Evaluación v4.0.
 
@@ -236,7 +236,7 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
   if (submitError) throw new Error(`AssemblyAI submit error: ${submitError}`)
 
   // Poll until done
-  for (let i = 0; i < 100; i++) {  // 100 × 3s = 300s max (was 180s — increased for 200 concurrent users)
+  for (let i = 0; i < 80; i++) {  // 80 × 3s = 240s max — fits within 300s Vercel Hobby limit
     await new Promise(r => setTimeout(r, 3000))
     const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
       headers: { authorization: apiKey },
