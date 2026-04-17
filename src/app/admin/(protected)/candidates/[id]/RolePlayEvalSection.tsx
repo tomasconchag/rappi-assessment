@@ -138,7 +138,7 @@ export function RolePlayEvalSection({
       const res = await fetch('/api/evaluate-roleplay', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ submissionId, caseContext: caseContext ?? null }),
+        body: JSON.stringify({ submissionId, caseContext: caseContext ?? null, force: true }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al evaluar')
