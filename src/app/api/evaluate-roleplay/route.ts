@@ -210,6 +210,73 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO con esta estructura exacta:
   "priority_actions": ["acción prioritaria 1", "acción prioritaria 2", "acción prioritaria 3"]
 }`
 
+// ── Dynamic rubric from DB ─────────────────────────────────────────────────
+// Reads evaluation_rubric rows (section='roleplay') and builds an "updated
+// criteria" block appended to RUBRIC_SYSTEM_PROMPT so edits in the admin UI
+// are respected at evaluation time. Falls back gracefully if DB is empty.
+interface RubricRow {
+  description: string
+  name: string
+  weight: number
+  scale: { score: number; label: string; description: string }[]
+}
+
+async function buildDynamicCriteria(
+  supabase: ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>
+): Promise<string> {
+  const { data: rows } = await supabase
+    .from('evaluation_rubric')
+    .select('description, name, weight, scale')
+    .eq('section', 'roleplay')
+    .eq('active', true)
+    .order('position', { ascending: true })
+
+  if (!rows || rows.length === 0) return ''
+
+  const varRows = (rows as RubricRow[]).filter(r => !r.description.endsWith('_PENALTY'))
+  const penRows = (rows as RubricRow[]).filter(r => r.description.endsWith('_PENALTY'))
+
+  // Group variables by metric
+  const groups: Record<string, RubricRow[]> = {}
+  for (const row of varRows) {
+    if (!groups[row.description]) groups[row.description] = []
+    groups[row.description].push(row)
+  }
+
+  if (Object.keys(groups).length === 0) return ''
+
+  let out = '\n\n═══════════════════════════════════════════════════════\n'
+  out += 'CRITERIOS DE EVALUACIÓN ACTUALIZADOS\n'
+  out += '(Aplica ESTOS criterios en lugar de los descritos arriba para cada métrica listada)\n'
+  out += '═══════════════════════════════════════════════════════\n'
+
+  for (const [metric, vars] of Object.entries(groups).sort()) {
+    const totalPts = vars.reduce((s, r) => s + Number(r.weight), 0)
+    out += `\n${metric} — ${totalPts} pts:\n`
+
+    for (const v of vars) {
+      const completo  = v.scale.find(s => s.label === 'COMPLETO')?.description?.trim()
+      const parcial   = v.scale.find(s => s.label === 'PARCIAL')?.description?.trim()
+      const noEjec    = v.scale.find(s => s.label === 'NO EJECUTADO')?.description?.trim()
+      out += `- ${v.name} (${v.weight} pts):\n`
+      if (completo)  out += `  COMPLETO (${v.weight} pts): ${completo}\n`
+      if (parcial)   out += `  PARCIAL (${Math.round(Number(v.weight) / 2)} pts): ${parcial}\n`
+      if (noEjec)    out += `  NO EJECUTADO (0 pts): ${noEjec}\n`
+    }
+
+    // Penalties for this metric
+    const metricPens = penRows.filter(r => r.description === `${metric}_PENALTY`)
+    for (const pen of metricPens) {
+      const cond = pen.scale[0]?.description?.trim()
+      out += `PENALIZACIÓN: ${pen.weight} pts — ${pen.name}`
+      if (cond) out += `. Aplica cuando: ${cond}`
+      out += '\n'
+    }
+  }
+
+  return out
+}
+
 async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
   const apiKey = process.env.ASSEMBLYAI_API_KEY!
 
@@ -316,6 +383,12 @@ export async function POST(req: NextRequest) {
     console.log('[evaluate-roleplay] evaluating with Claude...')
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
+    // Load dynamic rubric criteria from DB (admin-editable)
+    const dynamicCriteria = await buildDynamicCriteria(supabase)
+    if (dynamicCriteria) {
+      console.log('[evaluate-roleplay] using dynamic rubric from DB')
+    }
+
     const caseSection = caseContext
       ? `\n\nCONTEXTO DEL CASO ASIGNADO AL CANDIDATO:\n${caseContext}\n\nUsa este contexto para verificar si los datos que el farmer cita son coherentes con el restaurante real. Penaliza cifras inventadas que no correspondan a este contexto.`
       : ''
@@ -323,7 +396,7 @@ export async function POST(req: NextRequest) {
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 4096,
-      system: RUBRIC_SYSTEM_PROMPT,
+      system: RUBRIC_SYSTEM_PROMPT + dynamicCriteria,
       messages: [{
         role: 'user',
         content: `Evalúa la siguiente transcripción de roleplay usando el framework de Evaluación v4.0 (C1-C6). Recuerda: el FARMER es el candidato evaluado, el ALIADO es el dueño del restaurante. Responde SOLO con el JSON estructurado.${caseSection}\n\nTRANSCRIPCIÓN:\n${transcript}`,
