@@ -148,6 +148,21 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
   //   row = 0-based row index  (display row N → code row N-1)
   //   col = 0-based col index  (A=0, B=1, … J=9)
   //   cellKey(row, col) → `${row}_${col}`
+  //
+  // Locale-aware number parser:
+  //   es-CO format uses dots as thousands sep and comma as decimal (e.g. "1.050,50")
+  //   Plain JS output uses dot as decimal (e.g. "1.05")
+  //   We only strip dots when there's a comma present (safe for both formats).
+  function parseLocale(s: string): number {
+    const str = String(s).trim()
+    if (str.includes(',')) {
+      // Colombian locale: "1.050,50" → strip dots → "105050" → no, "1.050,50" → "1050.50"
+      return parseFloat(str.replace(/\./g, '').replace(',', '.'))
+    }
+    // Plain dot-decimal (JS output like "1.05") — parse directly
+    return parseFloat(str)
+  }
+
   const evaluate = useCallback((raw: string, depth = 0): string => {
     const s = raw.startsWith('+') ? '=' + raw.slice(1) : raw
     if (!s.startsWith('=')) return raw
@@ -159,9 +174,9 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
       const uv  = values.get(key)
       if (uv && uv !== '') {
         if (isFormulaInput(uv)) {
-          // Recursively evaluate the cell's formula, then strip locale formatting
+          // Recursively evaluate the cell's formula, then parse the result
           const evaled = evaluate(uv, depth + 1)
-          const n = parseFloat(evaled.replace(/\./g, '').replace(/,/g, '.'))
+          const n = parseLocale(evaled)
           return isNaN(n) ? '0' : String(n)
         }
         return uv
@@ -172,15 +187,16 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
     try {
       let expr = s.slice(1).toUpperCase()
 
-      // ── Step 1: expand SUM(A1:B5) before individual refs are replaced ────
+      // ── Step 1: expand SUM/SUMA(A1:B5) before individual refs are replaced ─
+      // SUMA is the Spanish/Colombian Excel alias for SUM
       // sRef / eRef look like "H30", "I36", etc.
-      expr = expr.replace(/SUM\(([A-J]\d+):([A-J]\d+)\)/g, (_, sRef: string, eRef: string) => {
+      expr = expr.replace(/SUM(?:A)?\(([A-J]\d+):([A-J]\d+)\)/g, (_, sRef: string, eRef: string) => {
         const startRow = parseInt(sRef.slice(1)) - 1;  const startCol = COLS.indexOf(sRef[0])
         const endRow   = parseInt(eRef.slice(1)) - 1;  const endCol   = COLS.indexOf(eRef[0])
         let sum = 0
         for (let row = startRow; row <= endRow; row++)
           for (let col = startCol; col <= endCol; col++) {
-            const n = parseFloat(resolveCell({ row, col }).replace(/\./g, '').replace(/,/g, '.'))
+            const n = parseLocale(resolveCell({ row, col }))
             if (!isNaN(n)) sum += n
           }
         return String(sum)
@@ -393,7 +409,7 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
       let value: number | string | null = null
       if (raw !== '') {
         const ev = evaluate(raw)
-        const n  = parseFloat(ev.replace(/\./g, '').replace(/,/g, '.'))
+        const n  = parseLocale(ev)
         value = isNaN(n) ? ev : n
       }
       return { r: ac.r, c: ac.c, value }
@@ -488,6 +504,37 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
         </p>
       </div>
 
+      {/* Prices reference panel — always visible */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        padding: '6px 12px',
+        background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.2)',
+        borderRadius: 8, marginBottom: 4, flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '1px', flexShrink: 0 }}>
+          📋 Precios
+        </span>
+        {[
+          { name: 'Hamburguesa', price: 18000, cost: 5400 },
+          { name: 'Perro caliente', price: 15000, cost: 4500 },
+          { name: 'Porción Pizza', price: 8000, cost: 2400 },
+          { name: 'Lasaña', price: 20000, cost: 6000 },
+        ].map((item, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {i > 0 && <span style={{ color: 'rgba(245,158,11,.3)', fontSize: 10 }}>·</span>}
+            <span style={{ fontSize: 11, fontFamily: 'DM Sans, sans-serif', color: 'var(--dim)' }}>
+              {item.name}
+            </span>
+            <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: '#fcd34d', fontWeight: 700 }}>
+              ${item.price.toLocaleString('es-CO')}
+            </span>
+            <span style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>
+              (costo ${item.cost.toLocaleString('es-CO')})
+            </span>
+          </span>
+        ))}
+      </div>
+
       {/* Point-mode banner */}
       {inPointMode && (
         <div style={{
@@ -566,7 +613,7 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
             overflow: 'auto', outline: 'none',
             border: '1px solid var(--border)',
             borderRadius: '0 0 8px 8px',
-            maxHeight: '52vh', background: '#0a0a14',
+            minHeight: '55vh', maxHeight: '72vh', background: '#0a0a14',
             cursor: inPointMode ? 'crosshair' : 'default',
           }}
         >
@@ -757,6 +804,12 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
         <span style={{ color: 'rgba(139,92,246,.3)' }}>·</span>
         <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'DM Sans, sans-serif' }}>
           Escribe <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 4px', borderRadius: 3, fontSize: 10 }}>=</code> y haz clic en celdas para referenciarlas
+        </span>
+        <span style={{ color: 'rgba(139,92,246,.3)' }}>·</span>
+        <span style={{ fontSize: 11, fontFamily: 'DM Sans, sans-serif', color: '#f87171', fontWeight: 600 }}>
+          ⚠ Decimales con <code style={{ background: 'rgba(248,113,113,.1)', padding: '1px 5px', borderRadius: 3, fontSize: 11, color: '#fca5a5' }}>.</code> (punto), no con coma — escribe{' '}
+          <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>3.5</code> y no{' '}
+          <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 3, fontSize: 11, textDecoration: 'line-through', opacity: .6 }}>3,5</code>
         </span>
       </div>
 

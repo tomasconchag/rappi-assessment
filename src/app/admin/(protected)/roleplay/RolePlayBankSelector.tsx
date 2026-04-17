@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import type { RoleplayBankEntry } from '@/types/assessment'
 
 interface Props {
@@ -31,16 +30,27 @@ export function RolePlayBankSelector({ configId, initialActiveId, cases, onActiv
 
   const handleCardClick = (id: string) => setSelectedId(prev => prev === id ? null : id)
 
-  const handleActivate = async () => {
-    if (!selectedId) return
+  const activateCase = async (caseId: string | null) => {
     setSaving(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('assessment_configs')
-        .update({ active_roleplay_case_id: selectedId })
-        .eq('id', configId)
-      if (error) throw error
+      const res = await fetch('/api/admin/activate-roleplay-case', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configId, caseId }),
+      })
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error ?? 'Error del servidor')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleActivate = async () => {
+    if (!selectedId) return
+    try {
+      await activateCase(selectedId)
       setActiveId(selectedId)
       onActiveChange?.(cases.find(c => c.id === selectedId) ?? null)
       setFlash('Caso de roleplay activado correctamente')
@@ -48,29 +58,19 @@ export function RolePlayBankSelector({ configId, initialActiveId, cases, onActiv
     } catch {
       setFlash('Error al activar el caso')
       setTimeout(() => setFlash(null), 3000)
-    } finally {
-      setSaving(false)
     }
   }
 
   const handleDeactivate = async () => {
-    setSaving(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('assessment_configs')
-        .update({ active_roleplay_case_id: null })
-        .eq('id', configId)
-      if (error) throw error
+      await activateCase(null)
       setActiveId(null)
       onActiveChange?.(null)
-      setFlash('Caso desactivado — se usará Heladería La Fiore por defecto')
+      setFlash('Caso desactivado')
       setTimeout(() => setFlash(null), 3000)
     } catch {
       setFlash('Error al desactivar')
       setTimeout(() => setFlash(null), 3000)
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -105,7 +105,7 @@ export function RolePlayBankSelector({ configId, initialActiveId, cases, onActiv
             <span style={{ fontSize: 16 }}>📞</span>
             <span style={{ fontSize: 13, fontFamily: 'Inter, DM Sans, sans-serif', color: 'var(--text)', fontWeight: 500 }}>
               Caso activo:{' '}
-              <strong>{cases.find(c => c.id === activeId)?.title ?? activeId}</strong>
+              <strong>{cases.find(c => c.id === activeId)?.restaurant_name ?? activeId}</strong>
             </span>
           </div>
           <button

@@ -28,12 +28,22 @@ const difficultyColor = (d: string) => {
   return '#8b5cf6'
 }
 
+// Converts a UTC timestamp from the DB to a "YYYY-MM-DDTHH:MM" string
+// in the browser's local timezone, suitable for <input type="datetime-local">.
+function toLocalDatetimeInput(utcString: string | null | undefined): string {
+  if (!utcString) return ''
+  const d = new Date(utcString)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases: CaseSummary[]; rpCases: RpBankSummary[] }) {
   const [name, setName]                   = useState(cohort.name)
   const [description, setDescription]     = useState(cohort.description)
   const [isActive, setIsActive]           = useState(cohort.is_active)
-  const [startsAt, setStartsAt]           = useState(cohort.starts_at?.slice(0, 16) ?? '')
-  const [endsAt, setEndsAt]               = useState(cohort.ends_at?.slice(0, 16) ?? '')
+  const [startsAt, setStartsAt]           = useState(() => toLocalDatetimeInput(cohort.starts_at))
+  const [endsAt, setEndsAt]               = useState(() => toLocalDatetimeInput(cohort.ends_at))
   const [sections, setSections]           = useState<string[]>(
     cohort.enabled_sections ?? ['sharktank', 'caso', 'math']
   )
@@ -64,8 +74,8 @@ export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases
           name:              name.trim(),
           description:       description.trim(),
           is_active:         isActive,
-          starts_at:         startsAt || null,
-          ends_at:           endsAt || null,
+          starts_at:         startsAt ? new Date(startsAt).toISOString() : null,
+          ends_at:           endsAt   ? new Date(endsAt).toISOString()   : null,
           enabled_sections:    sections,
           caso_mode:           casoMode,
           fixed_caso_id:       casoMode === 'fixed' ? (fixedCasoId || null) : null,

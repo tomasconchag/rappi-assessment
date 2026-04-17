@@ -166,6 +166,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Final safety fallback: if still null, pick the first available case in the bank
+  // This prevents "No se pudo cargar el caso" errors when no global case is configured
+  if (!roleplayBankCase) {
+    const { data: fallbackCase } = await supabase
+      .from('roleplay_bank')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    roleplayBankCase = fallbackCase ?? null
+    if (roleplayBankCase) {
+      console.warn('[cohort-assign] No active roleplay case configured — using fallback:', roleplayBankCase.restaurant_name)
+    }
+  }
+
   return Response.json({
     cohortId: cohort.id,
     enabledSections: cohort.enabled_sections ?? null,

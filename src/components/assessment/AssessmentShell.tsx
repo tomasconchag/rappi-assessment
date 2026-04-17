@@ -196,6 +196,28 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     return () => clearInterval(interval)
   }, [state.screen])
 
+  // Re-hydrate roleplayBankCase on mount if session was restored from localStorage.
+  // roleplayBankCase is React state (not persisted), so a page reload loses it.
+  // We call cohort-assign again using the restored candidate email to get it back.
+  useEffect(() => {
+    if (!cohortToken || !state.candidate?.email || state.screen === 'welcome') return
+    fetch('/api/cohort-assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: cohortToken, email: state.candidate.email }),
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then((data: {
+        roleplayBankCase?: import('@/types/assessment').RoleplayBankEntry | null
+        roleplayCase?: RoleplayCase | null
+      } | null) => {
+        if (data?.roleplayBankCase) setRoleplayBankCase(data.roleplayBankCase)
+        if (data?.roleplayCase) setRoleplayCase(data.roleplayCase)
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally run once on mount only
+
   // Flash "Guardado" for 2s whenever state changes (screen/answers)
   useEffect(() => {
     if (state.screen === 'welcome' || state.screen === 'completion') return

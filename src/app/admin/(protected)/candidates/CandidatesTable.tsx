@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { normalizedWeights } from '@/lib/challenges'
 import type { SectionId } from '@/lib/challenges'
@@ -108,6 +108,32 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
   const [fraudFilter, setFraudFilter] = useState<FraudFilter>('all')
   const [minScore,    setMinScore]    = useState('')
   const [page,        setPage]        = useState(0)
+  const [reEvalLoading, setReEvalLoading] = useState<Record<string, boolean>>({})
+  const [reEvalDone,    setReEvalDone]    = useState<Record<string, boolean>>({})
+
+  const triggerReEval = useCallback(async (s: Submission) => {
+    const sid = s.id
+    setReEvalLoading(prev => ({ ...prev, [sid]: true }))
+    const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+    const calls: Promise<unknown>[] = []
+    if (sec.includes('roleplay') && s.roleplay_completed && s.roleplay_score == null)
+      calls.push(fetch('/api/evaluate-roleplay',    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
+    if (sec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null)
+      calls.push(fetch('/api/evaluate-cultural-fit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
+    if (sec.includes('caso') && s.caso_score_pct == null)
+      calls.push(fetch('/api/evaluate-caso',         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
+    await Promise.allSettled(calls)
+    setReEvalLoading(prev => ({ ...prev, [sid]: false }))
+    setReEvalDone(prev => ({ ...prev, [sid]: true }))
+  }, [])
+
+  const hasPendingEval = (s: Submission) => {
+    const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+    if (sec.includes('roleplay')     && s.roleplay_completed     && s.roleplay_score     == null) return true
+    if (sec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null) return true
+    if (sec.includes('caso')         && s.caso_score_pct         == null)                         return true
+    return false
+  }
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -151,7 +177,7 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
     ? Math.round(withScore.reduce((sum, s) => sum + (computeOverall(s) ?? 0), 0) / withScore.length)
     : 0
   const completados  = withScore.length
-  const pendienteIA  = submissions.filter(s => s.roleplay_completed && s.roleplay_score == null).length
+  const pendienteIA  = submissions.filter(hasPendingEval).length
 
   const statCards = [
     { label: 'Total candidatos',    value: total,        color: 'var(--blue)',  icon: '👥' },
@@ -327,6 +353,12 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
                 </th>
                 <th
                   style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('caso')}
+                >
+                  Caso{sortIcon('caso')}
+                </th>
+                <th
+                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => handleSort('roleplay')}
                 >
                   Role Play{sortIcon('roleplay')}
@@ -339,7 +371,7 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
             <tbody>
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '56px 20px', textAlign: 'center' }}>
+                  <td colSpan={9} style={{ padding: '56px 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
                     <div style={{ fontSize: 14, color: 'var(--dim)', fontFamily: 'DM Sans' }}>
                       {query ? `Sin resultados para "${query}"` : 'No hay candidatos aún.'}
@@ -407,6 +439,30 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
                             {s.math_score_pct || 0}%
                           </span>
                       }
+                    </td>
+
+                    {/* Caso */}
+                    <td style={td}>
+                      {!sec.includes('caso') ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
+                      ) : s.caso_score_pct != null ? (
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct), fontWeight: 700 }}>
+                          {s.caso_score_pct}%
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 9px', borderRadius: 100,
+                          fontSize: 10.5, fontFamily: 'Space Mono, monospace', fontWeight: 700,
+                          color: '#60a5fa',
+                          background: 'rgba(96,165,250,.08)',
+                          border: '1px solid rgba(96,165,250,.25)',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#60a5fa', flexShrink: 0 }} />
+                          Pendiente
+                        </span>
+                      )}
                     </td>
 
                     {/* Role Play */}
@@ -494,26 +550,51 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
                       )}
                     </td>
 
-                    {/* Ver */}
+                    {/* Actions */}
                     <td style={{ ...td, paddingRight: 20, textAlign: 'right' }}>
-                      <Link
-                        href={`/admin/candidates/${s.id}`}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '6px 12px', borderRadius: 7,
-                          fontSize: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
-                          color: 'var(--blue)',
-                          background: 'rgba(67,97,238,.08)',
-                          border: '1px solid rgba(67,97,238,.15)',
-                          textDecoration: 'none',
-                          transition: 'all .15s',
-                          whiteSpace: 'nowrap',
-                        }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.15)' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.08)' }}
-                      >
-                        Ver →
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        {hasPendingEval(s) && !reEvalDone[s.id] && (
+                          <button
+                            onClick={e => { e.stopPropagation(); triggerReEval(s) }}
+                            disabled={reEvalLoading[s.id]}
+                            title="Disparar evaluaciones IA pendientes"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '6px 10px', borderRadius: 7,
+                              fontSize: 11, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
+                              color: reEvalLoading[s.id] ? 'var(--muted)' : 'var(--gold)',
+                              background: reEvalLoading[s.id] ? 'rgba(255,255,255,.04)' : 'rgba(245,158,11,.08)',
+                              border: `1px solid ${reEvalLoading[s.id] ? 'var(--border)' : 'rgba(245,158,11,.25)'}`,
+                              cursor: reEvalLoading[s.id] ? 'default' : 'pointer',
+                              transition: 'all .15s',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {reEvalLoading[s.id] ? '⏳' : '⚡'} Eval
+                          </button>
+                        )}
+                        {reEvalDone[s.id] && (
+                          <span style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', color: 'var(--teal)' }}>✓ Lanzado</span>
+                        )}
+                        <Link
+                          href={`/admin/candidates/${s.id}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '6px 12px', borderRadius: 7,
+                            fontSize: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
+                            color: 'var(--blue)',
+                            background: 'rgba(67,97,238,.08)',
+                            border: '1px solid rgba(67,97,238,.15)',
+                            textDecoration: 'none',
+                            transition: 'all .15s',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.15)' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(67,97,238,.08)' }}
+                        >
+                          Ver →
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 )

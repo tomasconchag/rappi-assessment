@@ -84,13 +84,15 @@ export function MembersPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cohortId, emails }),
       })
-      const data = await res.json() as { sent: number; failed: number }
-      if (!res.ok) throw new Error('Error del servidor')
-      showFlash(
-        data.failed === 0
-          ? `✓ ${data.sent} invitación${data.sent !== 1 ? 'es' : ''} enviada${data.sent !== 1 ? 's' : ''}`
-          : `${data.sent} enviadas, ${data.failed} fallaron`
-      )
+      const data = await res.json() as { sent: number; failed: number; firstError?: string }
+      if (!res.ok) throw new Error(data.firstError || 'Error del servidor')
+      if (data.failed === 0) {
+        showFlash(`✓ ${data.sent} invitación${data.sent !== 1 ? 'es' : ''} enviada${data.sent !== 1 ? 's' : ''}`)
+      } else if (data.sent === 0) {
+        showFlash(`Error: ${data.firstError || 'SMTP falló. Verifica credenciales en Vercel.'}`)
+      } else {
+        showFlash(`${data.sent} enviadas, ${data.failed} fallaron — ${data.firstError ?? ''}`)
+      }
     } catch (e) {
       showFlash(e instanceof Error ? e.message : 'Error al enviar')
     } finally {
@@ -234,19 +236,21 @@ export function MembersPanel({
       )}
 
       {/* Flash */}
-      {flash && (
-        <div style={{
-          fontSize: 12, padding: '7px 12px', borderRadius: 7, marginBottom: 10,
-          background: flash.includes('Error') || flash.includes('inválid') || flash.includes('Ya existe')
-            ? 'rgba(224,53,84,.08)' : 'rgba(0,214,138,.08)',
-          color: flash.includes('Error') || flash.includes('inválid') || flash.includes('Ya existe')
-            ? 'var(--red)' : '#00d68a',
-          border: `1px solid ${flash.includes('Error') || flash.includes('inválid') || flash.includes('Ya existe') ? 'rgba(224,53,84,.2)' : 'rgba(0,214,138,.2)'}`,
-          fontFamily: 'Inter, DM Sans, sans-serif',
-        }}>
-          {flash}
-        </div>
-      )}
+      {flash && (() => {
+        const isError = flash.startsWith('Error') || flash.includes('inválid') || flash.includes('Ya existe') || flash.includes('fallaron')
+        return (
+          <div style={{
+            fontSize: 12, padding: '7px 12px', borderRadius: 7, marginBottom: 10,
+            background: isError ? 'rgba(224,53,84,.08)' : 'rgba(0,214,138,.08)',
+            color: isError ? 'var(--red)' : '#00d68a',
+            border: `1px solid ${isError ? 'rgba(224,53,84,.2)' : 'rgba(0,214,138,.2)'}`,
+            fontFamily: 'Inter, DM Sans, sans-serif',
+            wordBreak: 'break-word',
+          }}>
+            {flash}
+          </div>
+        )
+      })()}
 
       {/* Empty state */}
       {list.length === 0 ? (

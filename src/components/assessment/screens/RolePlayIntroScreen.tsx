@@ -15,8 +15,8 @@ const tips = [
 ]
 
 export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
-  const ownerName = roleplayBankCase?.owner_name ?? 'Valentina'
-  const restaurantName = roleplayBankCase?.restaurant_name ?? 'Heladería La Fiore'
+  const ownerName = roleplayBankCase?.owner_name ?? null
+  const restaurantName = roleplayBankCase?.restaurant_name ?? null
   const ownerLabel = (roleplayBankCase?.owner_gender ?? 'f') === 'f' ? 'dueña' : 'dueño'
   const avatarLabel = (roleplayBankCase?.owner_gender ?? 'f') === 'f' ? 'la dueña' : 'el dueño'
 
@@ -66,7 +66,10 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
           marginBottom: 0,
           fontFamily: 'DM Sans, sans-serif',
         }}>
-          Tienes 5 minutos para convencer a <strong style={{ color: 'var(--text)' }}>{ownerName}</strong>, {ownerLabel} de {restaurantName}, de implementar nuevas estrategias en Rappi.
+          Tienes 5 minutos para convencer{ownerName && restaurantName
+            ? <> a <strong style={{ color: 'var(--text)' }}>{ownerName}</strong>, {ownerLabel} de <strong style={{ color: 'var(--text)' }}>{restaurantName}</strong>,</>
+            : ` al ${ownerLabel} del restaurante`
+          } de implementar nuevas estrategias en Rappi.
         </p>
       </div>
 

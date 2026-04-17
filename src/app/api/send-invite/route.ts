@@ -12,7 +12,16 @@ const transporter = nodemailer.createTransport({
   },
 })
 
-function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: string): string {
+function formatDeadline(endsAt: string | null): string | null {
+  if (!endsAt) return null
+  const d = new Date(endsAt)
+  return d.toLocaleString('es-CO', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota',
+  }) + ' (hora Colombia)'
+}
+
+function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: string, deadline: string | null): string {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -80,6 +89,21 @@ function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: s
                 </tr>
               </table>
 
+              ${deadline ? `<!-- Deadline box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background:rgba(224,53,84,.07);border:1px solid rgba(224,53,84,.2);border-left:3px solid #e03554;border-radius:10px;padding:14px 18px;">
+                    <p style="color:#e03554;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;margin:0 0 6px;">Fecha límite</p>
+                    <p style="color:rgba(255,255,255,.85);font-size:14px;font-weight:700;line-height:1.5;margin:0;">
+                      ${deadline}
+                    </p>
+                    <p style="color:rgba(255,255,255,.5);font-size:12px;margin:6px 0 0;">
+                      Después de esta fecha el enlace dejará de funcionar.
+                    </p>
+                  </td>
+                </tr>
+              </table>` : ''}
+
               <!-- CTA button -->
               <table cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
                 <tr>
@@ -133,7 +157,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient()
   const { data: cohort } = await supabase
     .from('cohorts')
-    .select('name, invite_token')
+    .select('name, invite_token, ends_at')
     .eq('id', cohortId)
     .single()
 
@@ -144,6 +168,7 @@ export async function POST(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
   const inviteUrl = `${baseUrl}/assessment?c=${cohort.invite_token}`
   const from = process.env.SMTP_FROM ?? process.env.SMTP_USER
+  const deadline = formatDeadline((cohort as any).ends_at ?? null)
 
   const results: { email: string; ok: boolean; error?: string }[] = []
 
@@ -153,14 +178,17 @@ export async function POST(req: NextRequest) {
         from,
         to: email,
         subject: `Invitación al Assessment Rappi — ${cohort.name}`,
-        html: buildEmailHtml(cohort.name, inviteUrl, email),
+        html: buildEmailHtml(cohort.name, inviteUrl, email, deadline),
       })
       results.push({ email, ok: true })
     } catch (e) {
-      results.push({ email, ok: false, error: e instanceof Error ? e.message : String(e) })
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[send-invite] SMTP error for ${email}:`, msg)
+      results.push({ email, ok: false, error: msg })
     }
   }
 
   const failed = results.filter(r => !r.ok)
-  return Response.json({ results, sent: results.length - failed.length, failed: failed.length })
+  const firstError = failed[0]?.error ?? null
+  return Response.json({ results, sent: results.length - failed.length, failed: failed.length, firstError })
 }
