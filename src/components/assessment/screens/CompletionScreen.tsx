@@ -77,16 +77,44 @@ export function CompletionScreen({ name, submitting, error, confirmationCode }: 
           </h2>
           <p style={{
             fontSize: 15, color: 'var(--dim)',
-            maxWidth: 460, margin: '0 auto 40px',
+            maxWidth: 460, margin: '0 auto 32px',
             lineHeight: 1.75, fontFamily: 'Inter, DM Sans, sans-serif',
           }}>
-            Tus respuestas, video y datos han sido guardados exitosamente.
-            El equipo de Rappi revisará tu evaluación y se pondrá en contacto contigo.
+            Todo quedó guardado — respuestas, video y datos de evaluación.
           </p>
+
+          {/* What happens next */}
+          <div style={{
+            maxWidth: 440, width: '100%', margin: '0 auto 24px',
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 14, padding: '22px 24px',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,.055)',
+            textAlign: 'left',
+          }}>
+            <div style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 14 }}>
+              ¿Qué pasa ahora?
+            </div>
+            {[
+              { icon: '📋', text: 'El equipo de Rappi revisará tu evaluación en los próximos 2–3 días hábiles.' },
+              { icon: '📧', text: 'Recibirás un correo con los resultados y próximos pasos.' },
+              { icon: '✅', text: 'No necesitas hacer nada más — ya tienes todo enviado.' },
+            ].map(({ icon, text }, i) => (
+              <div key={i} style={{
+                display: 'flex', gap: 12, alignItems: 'flex-start',
+                padding: '9px 0',
+                borderBottom: i < 2 ? '1px solid var(--border)' : 'none',
+                fontSize: 13.5, color: 'var(--dim)',
+                fontFamily: 'Inter, DM Sans, sans-serif', lineHeight: 1.6,
+              }}>
+                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                {text}
+              </div>
+            ))}
+          </div>
 
           {/* Confirmation code + message stacked */}
           <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
           }}>
             {confirmationCode && (
               <div style={{
@@ -110,20 +138,19 @@ export function CompletionScreen({ name, submitting, error, confirmationCode }: 
             )}
 
             <div style={{
-              padding: '16px 36px',
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
+              padding: '14px 36px',
+              background: 'rgba(0,214,138,.07)',
+              border: '1px solid rgba(0,214,138,.2)',
               borderRadius: 'var(--r)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.055)',
             }}>
               <p style={{
-                fontSize: 14, color: 'var(--dim)',
+                fontSize: 14, color: 'var(--green)',
                 fontFamily: 'Inter, DM Sans, sans-serif',
                 display: 'flex', alignItems: 'center', gap: 8,
-                margin: 0,
+                margin: 0, fontWeight: 600,
               }}>
                 <span style={{ fontSize: 18 }}>🚀</span>
-                ¡Mucho éxito en el proceso!
+                ¡Mucho éxito en el proceso, {name}!
               </p>
             </div>
           </div>

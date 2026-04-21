@@ -496,18 +496,53 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
                 {recError}
               </div>
             ) : (
-              <p style={{
-                fontSize: 14.5,
-                color: 'var(--dim)',
-                lineHeight: 1.75,
-                margin: 0,
-                fontFamily: 'DM Sans, sans-serif',
-              }}>
-                Tu sesión de preparación y la llamada quedan grabadas para que el equipo pueda evaluar tu desempeño.
-                Cuando hagas clic, el browser te pedirá qué compartir — selecciona{' '}
-                <strong style={{ color: 'var(--text)' }}>&quot;Esta pestaña&quot;</strong>.
-                Luego se pedirá acceso a tu <strong style={{ color: 'var(--text)' }}>cámara y micrófono</strong>.
-              </p>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{
+                  fontSize: 13.5,
+                  color: 'var(--dim)',
+                  lineHeight: 1.7,
+                  margin: 0,
+                  fontFamily: 'DM Sans, sans-serif',
+                  textAlign: 'center',
+                }}>
+                  Al hacer clic el browser abrirá un diálogo. Sigue estos 3 pasos:
+                </p>
+                {/* Step-by-step visual guide */}
+                {[
+                  { step: '1', label: 'Clic en "Compartir pantalla"', sub: 'Se abre el diálogo del navegador', icon: '🖥️' },
+                  { step: '2', label: 'Selecciona "Esta pestaña"', sub: 'Es la opción de la derecha — busca la pestaña con el logo de Rappi', icon: '📌', highlight: true },
+                  { step: '3', label: 'Clic en el botón "Compartir"', sub: 'Luego te pedirá cámara y micrófono — acepta los dos', icon: '✅' },
+                ].map(({ step, label, sub, icon, highlight }) => (
+                  <div key={step} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                    padding: '12px 16px',
+                    background: highlight ? 'rgba(245,158,11,.08)' : 'rgba(255,255,255,.03)',
+                    border: `1px solid ${highlight ? 'rgba(245,158,11,.25)' : 'var(--border)'}`,
+                    borderRadius: 10,
+                  }}>
+                    <div style={{
+                      flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                      background: highlight ? '#f59e0b' : 'rgba(255,255,255,.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'Space Mono, monospace', fontSize: 11, fontWeight: 700,
+                      color: highlight ? '#000' : 'var(--dim)',
+                    }}>
+                      {step}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <span style={{ fontSize: 15 }}>{icon}</span>
+                        <span style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 13.5, fontWeight: 600, color: highlight ? '#f59e0b' : 'var(--text)' }}>
+                          {label}
+                        </span>
+                      </div>
+                      <div style={{ fontFamily: 'DM Sans, sans-serif', fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>
+                        {sub}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
             <div style={{
@@ -625,6 +660,26 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               textTransform: 'uppercase',
             }}>
               Dificultad: {roleplayBankCase.difficulty}
+            </div>
+          </div>
+
+          {/* "Data stays visible" reassurance banner */}
+          <div style={{
+            background: 'rgba(0,214,138,.07)',
+            border: '1px solid rgba(0,214,138,.2)',
+            borderLeft: '3px solid var(--green)',
+            borderRadius: 10,
+            padding: '12px 18px',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>✅</span>
+            <div style={{ fontFamily: 'DM Sans, sans-serif', lineHeight: 1.6 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--green)', marginBottom: 2 }}>
+                Tranquilo — todos estos datos estarán en tu pantalla durante la llamada
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--dim)' }}>
+                No necesitas memorizar nada ni tomar notas. El briefing completo seguirá visible en el lado derecho mientras hablas.
+              </div>
             </div>
           </div>
 

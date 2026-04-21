@@ -50,6 +50,24 @@ export function MathIntroScreen({ onStart, mathContext, isSpreadsheet }: Props) 
                 <span style={{ fontSize: 13.5, color: 'var(--dim)', fontFamily: 'Inter, DM Sans, sans-serif', lineHeight: 1.6 }}>{tip.text}</span>
               </div>
             ))}
+            {/* Decimal warning — prominent */}
+            <div style={{
+              display: 'flex', gap: 12, alignItems: 'flex-start',
+              padding: '12px 16px',
+              background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)',
+              borderLeft: '3px solid #f59e0b', borderRadius: 10,
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+              <div style={{ fontFamily: 'Inter, DM Sans, sans-serif', lineHeight: 1.6 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#f59e0b', marginBottom: 2 }}>
+                  Decimales con punto, no con coma
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--dim)' }}>
+                  Escribe <code style={{ background: 'rgba(255,255,255,.08)', padding: '1px 6px', borderRadius: 4, fontFamily: 'Space Mono, monospace', fontSize: 12 }}>3.5</code> y no{' '}
+                  <code style={{ background: 'rgba(255,255,255,.04)', padding: '1px 6px', borderRadius: 4, fontFamily: 'Space Mono, monospace', fontSize: 12, textDecoration: 'line-through', opacity: .6 }}>3,5</code>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div className="anim2" style={{ display: 'flex', justifyContent: 'center' }}>

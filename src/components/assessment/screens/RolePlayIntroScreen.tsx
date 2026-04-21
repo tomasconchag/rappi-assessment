@@ -21,9 +21,12 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
   const avatarLabel = (roleplayBankCase?.owner_gender ?? 'f') === 'f' ? 'la dueña' : 'el dueño'
 
   const whatItems = [
-    `Vas a tener una llamada de voz con IA que simula ser ${avatarLabel} del restaurante`,
-    'En pantalla tendrás acceso a todos los datos del restaurante (ventas, estrategias activas, oportunidades)',
-    'Tu misión: identificar los problemas y proponer soluciones concretas con herramientas Rappi',
+    `Habla en voz alta — como en una llamada de teléfono real. La IA escucha tu voz y te responde con voz. No tienes que escribir nada.`,
+    ownerName
+      ? `Vas a hablar con ${ownerName}, ${ownerLabel} de ${restaurantName ?? 'el restaurante'} — un avatar IA que simula ser el cliente real.`
+      : `Vas a hablar con ${avatarLabel} del restaurante — un avatar IA que simula ser el cliente real.`,
+    'Mientras hablas, todos los datos del restaurante estarán visibles en tu pantalla — no tienes que memorizar nada.',
+    'Tu misión: identificar los problemas y proponer soluciones concretas con herramientas Rappi.',
   ]
   return (
     <div className="anim">
@@ -128,6 +131,29 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
             </li>
           ))}
         </ul>
+      </div>
+
+      {/* "Talk out loud" callout */}
+      <div className="anim2" style={{
+        background: 'rgba(245,158,11,.07)',
+        border: '1px solid rgba(245,158,11,.25)',
+        borderLeft: '3px solid #f59e0b',
+        borderRadius: 10,
+        padding: '14px 20px',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+      }}>
+        <span style={{ fontSize: 28, flexShrink: 0 }}>📞</span>
+        <div style={{ fontFamily: 'DM Sans, sans-serif', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 3 }}>
+            Habla en voz alta durante toda la llamada
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--dim)' }}>
+            Igual que una llamada de teléfono: la IA te escucha y te responde con voz. No hay nada que escribir.
+          </div>
+        </div>
       </div>
 
       {/* Tips */}

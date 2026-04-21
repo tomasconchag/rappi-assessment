@@ -5,9 +5,9 @@ interface Props {
 }
 
 const whatItems = [
-  'Tendrás una entrevista de voz con Simón, Team Lead de Brand Development en Rappi',
-  'Simón te hará una serie de preguntas sobre tu forma de trabajar, tus valores y tu fit con el equipo',
-  'La entrevista dura 5 minutos — responde con honestidad y naturalidad',
+  'Habla en voz alta — Simón te escucha y te responde con voz. Es igual que una llamada de teléfono, no hay nada que escribir.',
+  'Simón es un avatar de IA (no es una persona real). Simula ser el Team Lead de Brand Development y te hará preguntas sobre tu forma de trabajar y tus valores.',
+  'La entrevista dura 5 minutos — responde con honestidad y naturalidad, como lo harías con un entrevistador real.',
 ]
 
 const tips = [
@@ -46,12 +46,23 @@ export function CulturalFitIntroScreen({ onStart }: Props) {
           fontFamily: 'Fraunces, serif',
           fontSize: 34,
           fontWeight: 700,
-          marginBottom: 14,
+          marginBottom: 8,
           letterSpacing: '-.5px',
           color: 'var(--text)',
         }}>
           Entrevista con Simón
         </h2>
+        {/* AI badge */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 12px', borderRadius: 100, marginBottom: 14,
+          background: 'rgba(168,85,247,.1)', border: '1px solid rgba(168,85,247,.25)',
+          fontSize: 11, fontFamily: 'Space Mono, monospace',
+          color: '#a855f7', fontWeight: 600, letterSpacing: '.5px',
+          textTransform: 'uppercase',
+        }}>
+          <span>🤖</span> Avatar de Inteligencia Artificial
+        </div>
         <p style={{
           fontSize: 14.5,
           color: 'var(--dim)',
@@ -59,7 +70,7 @@ export function CulturalFitIntroScreen({ onStart }: Props) {
           marginBottom: 0,
           fontFamily: 'DM Sans, sans-serif',
         }}>
-          Esta es la última etapa del proceso. Vas a tener una conversación con <strong style={{ color: 'var(--text)' }}>Simón</strong>, Team Lead de Brand Development, quien evaluará tu fit cultural con el equipo de Rappi.
+          Esta es la última etapa del proceso. Vas a tener una conversación de voz con <strong style={{ color: 'var(--text)' }}>Simón</strong>, un avatar de IA que simula ser el Team Lead de Brand Development. <strong style={{ color: 'var(--text)' }}>No hay una persona real al otro lado</strong> — habla con normalidad, como si fuera una llamada.
         </p>
       </div>
 

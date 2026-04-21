@@ -870,6 +870,19 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
           </div>
 
           {/* Step indicator */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            {/* "Sección X de Y" text — only when assessment is active */}
+            {currentStep >= 0 && currentStep < stepLabels.length - 1 && (
+              <div style={{
+                fontFamily: 'DM Sans, sans-serif',
+                fontSize: 11,
+                color: 'var(--muted)',
+                letterSpacing: '.3px',
+              }}>
+                Sección <strong style={{ color: 'var(--text)' }}>{currentStep + 1}</strong> de{' '}
+                <strong style={{ color: 'var(--text)' }}>{stepLabels.length - 1}</strong>
+              </div>
+            )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {stepLabels.map((label, i) => {
               const isActive   = i === currentStep
@@ -914,6 +927,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
                 </div>
               )
             })}
+          </div>
           </div>
         </div>
       )}

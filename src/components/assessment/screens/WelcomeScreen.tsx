@@ -319,10 +319,28 @@ export function WelcomeScreen({ onSubmit, clerkUser, cohortDeadline }: Props) {
         {clerkUser ? `Comenzar como ${firstName} →` : 'Comenzar evaluación →'}
       </button>
 
+      {/* Time + preparation notice — prominent */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+        padding: '14px 20px', borderRadius: 12, marginTop: 28, marginBottom: 8,
+        background: 'rgba(232,146,48,.07)', border: '1px solid rgba(232,146,48,.18)',
+        maxWidth: 420, textAlign: 'left',
+      }}>
+        <span style={{ fontSize: 22, flexShrink: 0, marginTop: 2 }}>⏱</span>
+        <div style={{ fontFamily: 'DM Sans, sans-serif', lineHeight: 1.65 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#f0ac60', marginBottom: 3 }}>
+            Duración aproximada: 25–30 minutos
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--dim)' }}>
+            Asegúrate de tener <strong style={{ color: 'var(--text)' }}>30 minutos sin interrupciones</strong> antes de empezar — no puedes pausar ni reanudar el assessment.
+          </div>
+        </div>
+      </div>
+
       {/* Section overview pills */}
       <div style={{
         display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center',
-        marginTop: 40, marginBottom: 8,
+        marginTop: 16, marginBottom: 8,
       }}>
         {[
           { label: '🦈 SharkTank', color: 'rgba(224,53,84,.1)',  border: 'rgba(224,53,84,.18)',  text: '#f07090' },
@@ -340,7 +358,7 @@ export function WelcomeScreen({ onSubmit, clerkUser, cohortDeadline }: Props) {
         ))}
       </div>
       <p style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'JetBrains Mono, Space Mono, monospace', letterSpacing: '.5px' }}>
-        ~25 min · monitoreo activo
+        monitoreo activo · pantalla completa requerida
       </p>
 
       {/* Admin link */}
