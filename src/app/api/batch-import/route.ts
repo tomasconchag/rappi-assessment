@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     email: t.employee_email,
     name:  t.employee_name ?? t.employee_email,
     token: t.invite_token,
-    url:   `${baseUrl}/assessment?t=${t.invite_token}`,
+    url:   `${baseUrl}/test?t=${t.invite_token}`,
   }))
 
   console.log(`[batch-import] created batch ${batch.id} with ${allInserted.length} templates`)
