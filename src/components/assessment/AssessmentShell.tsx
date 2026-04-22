@@ -95,11 +95,22 @@ interface ClerkUser {
   imageUrl: string
 }
 
+interface PersonalizedTemplate {
+  templateId: string
+  batchId: string | null
+  batchName: string | null
+  configId: string | null
+  employeeEmail: string
+  employeeName: string | null
+  template: { version: string; cells: unknown[]; answerCells: unknown[] }
+}
+
 interface Props {
   config: AssessmentConfig
   clerkUser?: ClerkUser | null
   cohortToken?: string | null
   cohortDeadline?: string | null
+  personalizedTemplate?: PersonalizedTemplate
 }
 
 function buildScreenToStep(enabled: string[]): Record<string, number> {
@@ -129,7 +140,7 @@ function buildScreenToStep(enabled: string[]): Record<string, number> {
   return map
 }
 
-export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline }: Props) {
+export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline, personalizedTemplate }: Props) {
   // liveConfig allows cohort case assignment to update config after email submit
   const [liveConfig, setLiveConfig] = useState<AssessmentConfig>(config)
   const [state, dispatch] = useAssessmentState()
@@ -410,7 +421,11 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     const isSpreadsheetMode = liveConfig.math_mode === 'spreadsheet'
     let correct: number, total: number, mathPct: number, honeypotFails: number, details: ReturnType<typeof scoreMath>['details'], mathTimeSecs: number | null
     if (isSpreadsheetMode) {
-      const tmpl      = getSpreadsheetVersion(spreadsheetVersion.current)
+      // Personalized template (employee test) takes precedence over the default A/B version
+      const tmpl = personalizedTemplate
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? (personalizedTemplate.template as any)
+        : getSpreadsheetVersion(spreadsheetVersion.current)
       const secsLeft  = spreadsheetSecsLeftRef.current
       const ssResult  = scoreMathSpreadsheet(tmpl, inlineSpreadsheetAnswers ?? spreadsheetAnswersRef.current, secsLeft, 600)
       correct = ssResult.correct; total = ssResult.total; mathPct = ssResult.pct
@@ -513,6 +528,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         mathAnswers: state.mathAnswers, mathTimings: state.mathTimings, mathDetails: details,
         mathMode: liveConfig.math_mode ?? 'questions',
         mathSpreadsheetVersion: isSpreadsheetMode ? spreadsheetVersion.current : null,
+        personalizedTemplateId: personalizedTemplate?.templateId ?? null,
         proctoring: (({ snapshots: _s, ...rest }) => ({ ...rest, fraud_score: fs, fraud_level: fl }))(proctoringData),
         snapshotPaths,
       })
@@ -1007,7 +1023,8 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       )}
       {state.screen === 'math_question' && liveConfig.math_mode === 'spreadsheet' && (
         <MathSpreadsheetScreen
-          template={getSpreadsheetVersion(spreadsheetVersion.current)}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          template={personalizedTemplate ? (personalizedTemplate.template as any) : getSpreadsheetVersion(spreadsheetVersion.current)}
           candidateEmail={state.candidate.email}
           onDone={(answers, secsLeft) => {
             spreadsheetAnswersRef.current  = answers

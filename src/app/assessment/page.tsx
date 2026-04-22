@@ -73,12 +73,51 @@ async function resolveCohortCase(
 }
 
 export default async function AssessmentPage(props: {
-  searchParams: Promise<{ c?: string }>
+  searchParams: Promise<{ c?: string; t?: string }>
 }) {
   const searchParams = await props.searchParams
-  const cohortToken = searchParams.c ?? null
+  const cohortToken    = searchParams.c ?? null
+  const templateToken  = searchParams.t ?? null   // personalized-template invite token
 
   const [clerkUser, supabase] = await Promise.all([currentUser(), createClient()])
+
+  // ── Personalized template (employee ?t=TOKEN links) ──────────────────────
+  let personalizedTemplate: {
+    templateId: string
+    batchId: string | null
+    batchName: string | null
+    configId: string | null
+    employeeEmail: string
+    employeeName: string | null
+    template: { version: string; cells: unknown[]; answerCells: unknown[] }
+  } | null = null
+
+  if (templateToken) {
+    const admin = createAdminClient()
+    const { data: pt } = await admin
+      .from('personalized_templates')
+      .select(`
+        id, employee_email, employee_name, template_json,
+        template_batches ( id, name, config_id )
+      `)
+      .eq('invite_token', templateToken)
+      .maybeSingle()
+
+    if (pt) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const batch = Array.isArray(pt.template_batches) ? pt.template_batches[0] : pt.template_batches as any
+      personalizedTemplate = {
+        templateId:    pt.id,
+        batchId:       batch?.id       ?? null,
+        batchName:     batch?.name     ?? null,
+        configId:      batch?.config_id ?? null,
+        employeeEmail: pt.employee_email,
+        employeeName:  pt.employee_name ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        template:      pt.template_json as any,
+      }
+    }
+  }
 
   const { data: configData } = await supabase
     .from('assessment_configs')
@@ -205,9 +244,12 @@ export default async function AssessmentPage(props: {
       } as Question]
     : (casoQuestionsData || []) as Question[]
 
-  // Sections: cohort override → global config → default
+  // Sections: personalized template → cohort override → global config → default
+  // Employee Excel tests only show the math/spreadsheet section (no video, no roleplay)
   const globalSections = (configData.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
-  const effectiveSections = (cohortEnabledSections as SectionId[] | null) ?? globalSections
+  const effectiveSections: SectionId[] = personalizedTemplate
+    ? ['math']
+    : (cohortEnabledSections as SectionId[] | null) ?? globalSections
 
   const config: AssessmentConfig = {
     id: configData.id,
@@ -238,6 +280,7 @@ export default async function AssessmentPage(props: {
           clerkUser={clerkUserData}
           cohortToken={cohortToken}
           cohortDeadline={cohortDeadline}
+          personalizedTemplate={personalizedTemplate ?? undefined}
         />
       </ErrorBoundary>
     </main>

@@ -94,6 +94,13 @@ const navItems = [
     children: null,
   },
   {
+    href: '/admin/batches',
+    label: 'Pruebas por lote',
+    exact: false,
+    icon: <span style={{ fontSize: 16, lineHeight: 1 }}>📦</span>,
+    children: null,
+  },
+  {
     href: '/admin/settings',
     label: 'Taller de Math',
     exact: true,

@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
     const mathAnswers  = (b.mathAnswers  as Record<number, string>) ?? {}
     const mathTimings  = (b.mathTimings  as Record<number, number>) ?? {}
     const mathDetails  = (b.mathDetails  as { idx: number; correct: boolean; pointsAwarded: number; got?: string }[]) ?? []
-    const mathSpreadsheetVersion = b.mathSpreadsheetVersion as string | null | undefined
+    const mathSpreadsheetVersion    = b.mathSpreadsheetVersion    as string | null | undefined
+    const personalizedTemplateId    = b.personalizedTemplateId    as string | null | undefined
     const proctoring   = (b.proctoring   as Record<string, unknown>) ?? {}
     const snapshotPaths = (b.snapshotPaths as string[]) ?? []
 
@@ -217,6 +218,7 @@ export async function POST(req: NextRequest) {
         caso_answered_count: casoAnsweredCount ?? 0,
         caso_score_pct: casoScorePct ?? 0,
         overall_score_pct: overallScorePct ?? 0,
+        template_id: personalizedTemplateId ?? null,
       },
       p_answers: [...casoRows, ...mathRows],
       p_proctoring: proctoring,
@@ -230,6 +232,17 @@ export async function POST(req: NextRequest) {
 
     const submissionId = (rpcResult as { id: string }).id
     console.log(`[submissions] atomic insert done id=${submissionId} (${Date.now()-t0}ms)`)
+
+    // Mark personalized template as used (non-blocking, best-effort)
+    if (personalizedTemplateId) {
+      supabase
+        .from('personalized_templates')
+        .update({ used_at: new Date().toISOString() })
+        .eq('id', personalizedTemplateId)
+        .then(({ error }) => {
+          if (error) console.warn('[submissions] could not mark template as used:', error.message)
+        })
+    }
 
     // ── Auto-trigger AI evaluations after response is sent ───────────────────
     const evalBase = process.env.NEXT_PUBLIC_APP_URL || 'https://rappi-assessment.vercel.app'
