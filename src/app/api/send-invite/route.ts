@@ -1,16 +1,6 @@
 import { type NextRequest } from 'next/server'
-import nodemailer from 'nodemailer'
+import { sendMail, isSmtpConfigured } from '@/lib/smtp'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
 
 function formatDeadline(endsAt: string | null): string | null {
   if (!endsAt) return null
@@ -150,8 +140,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Missing cohortId or emails' }, { status: 400 })
   }
 
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    return Response.json({ error: 'Email not configured' }, { status: 500 })
+  if (!isSmtpConfigured()) {
+    return Response.json({ error: 'Email not configured (set SMTP_USER + SMTP_PASS)' }, { status: 500 })
   }
 
   const supabase = createAdminClient()
@@ -167,15 +157,13 @@ export async function POST(req: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
   const inviteUrl = `${baseUrl}/assessment?c=${cohort.invite_token}`
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER
   const deadline = formatDeadline((cohort as any).ends_at ?? null)
 
   const results: { email: string; ok: boolean; error?: string }[] = []
 
   for (const email of emails) {
     try {
-      await transporter.sendMail({
-        from,
+      await sendMail({
         to: email,
         subject: `Invitación al Assessment Rappi — ${cohort.name}`,
         html: buildEmailHtml(cohort.name, inviteUrl, email, deadline),

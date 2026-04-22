@@ -8,24 +8,15 @@
  *
  * Auth: x-admin-secret header required.
  * Rate: sends in parallel chunks of 10 to avoid SMTP overload.
+ * Uses shared smtp.ts utility which round-robins across all configured accounts.
  */
 
 import { type NextRequest } from 'next/server'
-import nodemailer from 'nodemailer'
+import { sendMail, isSmtpConfigured } from '@/lib/smtp'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
+const APP_URL    = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
 const CHUNK_SIZE = 10
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
 
 function buildEmailHtml(
   employeeName: string,
@@ -145,15 +136,13 @@ function buildEmailHtml(
 async function sendOne(
   row: { id: string; employee_email: string; employee_name: string | null; invite_token: string },
   batchName: string,
-  from: string,
 ): Promise<{ id: string; email: string; ok: boolean; error?: string }> {
   const testUrl = `${APP_URL}/test?t=${row.invite_token}`
   try {
-    await transporter.sendMail({
-      from,
-      to: row.employee_email,
+    await sendMail({
+      to:      row.employee_email,
       subject: `Tu prueba de Excel está lista — ${batchName}`,
-      html: buildEmailHtml(row.employee_name ?? '', batchName, testUrl, row.employee_email),
+      html:    buildEmailHtml(row.employee_name ?? '', batchName, testUrl, row.employee_email),
     })
     return { id: row.id, email: row.employee_email, ok: true }
   } catch (e) {
@@ -170,8 +159,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    return Response.json({ error: 'Email not configured (SMTP_USER / SMTP_PASS missing)' }, { status: 500 })
+  if (!isSmtpConfigured()) {
+    return Response.json({ error: 'Email not configured (set SMTP_USER + SMTP_PASS)' }, { status: 500 })
   }
 
   const body = await req.json() as { batchId?: string; templateId?: string }
@@ -182,7 +171,6 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createAdminClient()
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER!
 
   // ── Single resend ────────────────────────────────────────────────────────
   if (templateId) {
@@ -200,7 +188,10 @@ export async function POST(req: NextRequest) {
     const batch = Array.isArray(row.template_batches) ? row.template_batches[0] : row.template_batches as any
     const batchName = batch?.name ?? 'Evaluación Rappi'
 
-    const result = await sendOne(row as { id: string; employee_email: string; employee_name: string | null; invite_token: string }, batchName, from)
+    const result = await sendOne(
+      row as { id: string; employee_email: string; employee_name: string | null; invite_token: string },
+      batchName,
+    )
 
     if (result.ok) {
       await supabase
@@ -233,13 +224,16 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: tplErr.message }, { status: 500 })
   }
 
-  const rows = (templates ?? []) as { id: string; employee_email: string; employee_name: string | null; invite_token: string; email_sent_at: string | null }[]
+  const rows = (templates ?? []) as {
+    id: string; employee_email: string; employee_name: string | null
+    invite_token: string; email_sent_at: string | null
+  }[]
   const results: { id: string; email: string; ok: boolean; error?: string }[] = []
 
-  // Send in chunks of CHUNK_SIZE
+  // Send in chunks of CHUNK_SIZE (round-robin across SMTP accounts happens inside sendMail)
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE)
-    const chunkResults = await Promise.all(chunk.map(r => sendOne(r, batchRow.name, from)))
+    const chunkResults = await Promise.all(chunk.map(r => sendOne(r, batchRow.name)))
     results.push(...chunkResults)
 
     // Mark sent rows
@@ -258,4 +252,3 @@ export async function POST(req: NextRequest) {
   console.log(`[batch-send-emails] batch=${batchId} sent=${sent} failed=${failed}`)
   return Response.json({ results, sent, failed, total: rows.length })
 }
-
