@@ -9,7 +9,7 @@ export default async function BatchesPage() {
     .from('template_batches')
     .select(`
       id, name, description, created_at, created_by,
-      personalized_templates ( id, employee_email, employee_name, used_at )
+      personalized_templates ( id, employee_email, employee_name, used_at, email_sent_at, opened_at, results_json )
     `)
     .order('created_at', { ascending: false })
 

@@ -52,6 +52,18 @@ export async function GET(
     return Response.json({ error: 'Token not found' }, { status: 404 })
   }
 
+  // Record first open (non-blocking, best-effort)
+  if (!data.used_at) {
+    supabase
+      .from('personalized_templates')
+      .update({ opened_at: new Date().toISOString() })
+      .eq('id', data.id)
+      .is('opened_at', null)   // only set once — don't overwrite
+      .then(({ error }) => {
+        if (error) console.warn('[template] could not set opened_at:', error.message)
+      })
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const batch = Array.isArray(data.template_batches) ? data.template_batches[0] : data.template_batches as any
 
