@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "rappi-assessment",
-      "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": ["-c", "/usr/local/bin/node node_modules/next/dist/bin/next dev"],
-      "cwd": "/Users/tomas/Documents/Rappi/Special Projects/rappi-assessment",
-      "port": 3000
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001
     }
   ]
 }

@@ -30,6 +30,64 @@ import { getSpreadsheetVersion, randomVersion, scoreMathSpreadsheet } from '@/li
 import type { SpreadsheetAnswer } from '@/lib/mathSpreadsheetTemplates'
 import type { SectionId } from '@/lib/challenges'
 
+// ── Atomic video upload helper ──────────────────────────────────────────────
+// Uploads a single video with up to 3 attempts and exponential backoff
+// (1s, 3s between attempts). Throws on final failure with a descriptive
+// message. Callers should wrap in try/catch to preserve silent-failure
+// semantics when a partial submission is acceptable.
+async function uploadVideoAtomic(params: {
+  blob: Blob
+  mimeType: string
+  section?: 'roleplay' | 'cultural_fit'  // omit for sharktank (default bucket path)
+  candidateEmail: string
+  label: string  // human-readable label for error messages (e.g. "SharkTank")
+}): Promise<string> {
+  const { blob, mimeType, section, candidateEmail, label } = params
+  const MAX_ATTEMPTS = 3
+  let lastErr: unknown = null
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(3, attempt - 1)))
+    }
+    try {
+      const uploadRes = await fetch('/api/video-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidateEmail,
+          mimeType,
+          ...(section ? { section } : {}),
+        }),
+      })
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => '')
+        throw new Error(`signed URL ${uploadRes.status}: ${errText.slice(0, 120)}`)
+      }
+      const { signedUrl, path } = await uploadRes.json()
+      if (!signedUrl || !path) throw new Error('signed URL response missing fields')
+
+      // Supabase bucket accepts base mime only — strip codec params
+      const baseMime = mimeType.split(';')[0] || 'video/webm'
+      const putRes = await fetch(signedUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': baseMime },
+      })
+      if (!putRes.ok) {
+        throw new Error(`PUT ${putRes.status}: ${putRes.statusText}`)
+      }
+      console.log(`[upload] ${label} success on attempt ${attempt + 1}`)
+      return path
+    } catch (err) {
+      lastErr = err
+      console.warn(`[upload] ${label} attempt ${attempt + 1} failed:`, err)
+    }
+  }
+  const errMsg = lastErr instanceof Error ? lastErr.message : String(lastErr)
+  throw new Error(`${label}: ${errMsg}`)
+}
+
 interface ClerkUser {
   id: string
   name: string
@@ -373,86 +431,50 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
     const fl = fraudLevel(fs)
 
     try {
+      // Video uploads — each is independent; a failure in one is logged and the submission
+      // proceeds with null path for that section (preserving prior silent-failure semantics
+      // but with stronger retry via uploadVideoAtomic: 3 attempts + exponential backoff).
       let videoPath: string | null = null
       if (state.videoBlob) {
         try {
-          const uploadRes = await fetch('/api/video-upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ candidateEmail: state.candidate.email, mimeType: state.videoMimeType }),
+          videoPath = await uploadVideoAtomic({
+            blob: state.videoBlob,
+            mimeType: state.videoMimeType,
+            candidateEmail: state.candidate.email,
+            label: 'SharkTank',
           })
-          if (uploadRes.ok) {
-            const { signedUrl, path } = await uploadRes.json()
-            // Retry upload up to 2 times on failure
-            // Strip codec params from Content-Type — Supabase bucket accepts base mime only
-            const baseVideoMime = state.videoMimeType.split(';')[0] || 'video/webm'
-            let putOk = false
-            for (let attempt = 0; attempt < 2 && !putOk; attempt++) {
-              const putRes = await fetch(signedUrl, {
-                method: 'PUT',
-                body: state.videoBlob,
-                headers: { 'Content-Type': baseVideoMime },
-              })
-              putOk = putRes.ok
-              if (!putOk) {
-                console.error(`Video PUT attempt ${attempt + 1} failed:`, putRes.status, putRes.statusText)
-              }
-            }
-            if (putOk) videoPath = path
-          }
-        } catch {
-          // Video upload failed silently — submission proceeds without video
+        } catch (uploadErr) {
+          console.error('[upload] SharkTank final failure:', uploadErr)
         }
       }
 
       let roleplayVideoPath: string | null = null
       if (state.roleplayVideoBlob) {
         try {
-          const roleplayUploadRes = await fetch('/api/video-upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ candidateEmail: state.candidate.email, mimeType: state.roleplayVideoMimeType, section: 'roleplay' }),
+          roleplayVideoPath = await uploadVideoAtomic({
+            blob: state.roleplayVideoBlob,
+            mimeType: state.roleplayVideoMimeType,
+            section: 'roleplay',
+            candidateEmail: state.candidate.email,
+            label: 'RolePlay',
           })
-          if (roleplayUploadRes.ok) {
-            const { signedUrl, path } = await roleplayUploadRes.json()
-            const baseRoleplayMime = state.roleplayVideoMimeType.split(';')[0] || 'video/webm'
-            // Retry upload up to 2 times (same pattern as SharkTank video)
-            let roleplayPutOk = false
-            for (let attempt = 0; attempt < 2 && !roleplayPutOk; attempt++) {
-              const putRes = await fetch(signedUrl, { method: 'PUT', body: state.roleplayVideoBlob, headers: { 'Content-Type': baseRoleplayMime } })
-              roleplayPutOk = putRes.ok
-              if (!roleplayPutOk) console.error(`Roleplay video PUT attempt ${attempt + 1} failed:`, putRes.status)
-            }
-            if (roleplayPutOk) roleplayVideoPath = path
-          }
         } catch (uploadErr) {
-          console.error('Roleplay video upload error:', uploadErr)
-          // Continue submission without video
+          console.error('[upload] RolePlay final failure:', uploadErr)
         }
       }
 
       let culturalFitVideoPath: string | null = null
       if (state.culturalFitVideoBlob) {
         try {
-          const cfUploadRes = await fetch('/api/video-upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ candidateEmail: state.candidate.email, mimeType: state.culturalFitVideoMimeType, section: 'cultural_fit' }),
+          culturalFitVideoPath = await uploadVideoAtomic({
+            blob: state.culturalFitVideoBlob,
+            mimeType: state.culturalFitVideoMimeType,
+            section: 'cultural_fit',
+            candidateEmail: state.candidate.email,
+            label: 'CulturalFit',
           })
-          if (cfUploadRes.ok) {
-            const { signedUrl, path } = await cfUploadRes.json()
-            const baseCfMime = state.culturalFitVideoMimeType.split(';')[0] || 'video/webm'
-            // Retry upload up to 2 times
-            let cfPutOk = false
-            for (let attempt = 0; attempt < 2 && !cfPutOk; attempt++) {
-              const putRes = await fetch(signedUrl, { method: 'PUT', body: state.culturalFitVideoBlob, headers: { 'Content-Type': baseCfMime } })
-              cfPutOk = putRes.ok
-              if (!cfPutOk) console.error(`Cultural fit video PUT attempt ${attempt + 1} failed:`, putRes.status)
-            }
-            if (cfPutOk) culturalFitVideoPath = path
-          }
         } catch (uploadErr) {
-          console.error('Cultural fit video upload error:', uploadErr)
+          console.error('[upload] CulturalFit final failure:', uploadErr)
         }
       }
 
@@ -986,6 +1008,7 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       {state.screen === 'math_question' && liveConfig.math_mode === 'spreadsheet' && (
         <MathSpreadsheetScreen
           template={getSpreadsheetVersion(spreadsheetVersion.current)}
+          candidateEmail={state.candidate.email}
           onDone={(answers, secsLeft) => {
             spreadsheetAnswersRef.current  = answers
             spreadsheetSecsLeftRef.current = secsLeft

@@ -8,6 +8,7 @@ import type { SpreadsheetVersion, SpreadsheetAnswer, CellDef } from '@/lib/mathS
 interface Props {
   template: SpreadsheetVersion
   onDone: (answers: SpreadsheetAnswer[], secsLeft: number) => void
+  candidateEmail?: string
 }
 
 const TIMER_SECONDS = 10 * 60  // 10 minutes
@@ -66,7 +67,7 @@ function parseRefs(formula: string): Map<string, number> {
   return result
 }
 
-export function MathSpreadsheetScreen({ template, onDone }: Props) {
+export function MathSpreadsheetScreen({ template, onDone, candidateEmail }: Props) {
   const cellMap = useRef<Map<string, CellDef>>(new Map())
   useEffect(() => {
     const m = new Map<string, CellDef>()
@@ -152,14 +153,20 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
   // Locale-aware number parser:
   //   es-CO format uses dots as thousands sep and comma as decimal (e.g. "1.050,50")
   //   Plain JS output uses dot as decimal (e.g. "1.05")
-  //   We only strip dots when there's a comma present (safe for both formats).
+  //   Handles three cases: "72.000" (thousands-only), "1.050,50" (full), "3.5" (plain JS).
   function parseLocale(s: string): number {
     const str = String(s).trim()
     if (str.includes(',')) {
-      // Colombian locale: "1.050,50" → strip dots → "105050" → no, "1.050,50" → "1050.50"
+      // Colombian locale: "1.050,50" → strip thousand-dots → "1050.50"
+      // Also handles plain "3,5" → "3.5"
       return parseFloat(str.replace(/\./g, '').replace(',', '.'))
     }
-    // Plain dot-decimal (JS output like "1.05") — parse directly
+    // Colombian thousands separator without decimal: "72.000" or "1.050.000"
+    // Pattern: digits in groups of exactly 3 separated by dots, no decimal part
+    if (/^\d{1,3}(\.\d{3})+$/.test(str)) {
+      return parseFloat(str.replace(/\./g, ''))
+    }
+    // Plain dot-decimal (JS output like "1.05" or formula result "0.25") — parse directly
     return parseFloat(str)
   }
 
@@ -462,7 +469,17 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
       {/* Header */}
       <div className="anim">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <Tag color="blue">Taller de Matemáticas · Hoja de Cálculo · Versión {template.version}</Tag>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Tag color="blue">Taller de Matemáticas · Hoja de Cálculo · Versión {template.version}</Tag>
+            {candidateEmail && (
+              <span style={{
+                fontSize: 11, fontFamily: 'JetBrains Mono, Space Mono, monospace',
+                color: 'var(--muted)', letterSpacing: '.3px',
+              }}>
+                {candidateEmail}
+              </span>
+            )}
+          </div>
 
           {/* Timer */}
           <div style={{
@@ -813,8 +830,16 @@ export function MathSpreadsheetScreen({ template, onDone }: Props) {
         </span>
       </div>
 
-      {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexShrink: 0 }}>
+      {/* Footer — sticky so it's always visible regardless of scroll position */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginTop: 8, flexShrink: 0,
+        position: 'sticky', bottom: 0,
+        background: 'var(--bg, #0a0a14)',
+        borderTop: '1px solid var(--border)',
+        padding: '10px 0 4px',
+        zIndex: 10,
+      }}>
         <p style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'Inter, DM Sans, sans-serif', margin: 0 }}>
           {answeredCount < totalQ
             ? `Faltan ${totalQ - answeredCount} respuestas. Puedes enviar de todas formas.`

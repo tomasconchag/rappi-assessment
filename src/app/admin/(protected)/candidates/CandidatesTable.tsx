@@ -7,6 +7,7 @@ import type { SectionId } from '@/lib/challenges'
 
 interface Submission {
   id: string
+  config_id: string | null
   completed_at: string | null
   overall_score_pct: number | null
   math_score_pct: number | null
@@ -21,6 +22,12 @@ interface Submission {
   challenge_weights: Partial<Record<SectionId, number>> | null
   candidates: { name: string; email: string; cedula: string } | { name: string; email: string; cedula: string }[] | null
   proctoring_reports: { fraud_score: number; fraud_level: string } | { fraud_score: number; fraud_level: string }[] | null
+}
+
+interface AssessmentConfig {
+  id: string
+  label: string
+  is_active: boolean
 }
 
 const fraudStyle = (level: string) => {
@@ -101,7 +108,10 @@ type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
 
 const PAGE_SIZE = 50
 
-export function CandidatesTable({ submissions, totalCount }: { submissions: Submission[]; totalCount?: number }) {
+export function CandidatesTable({ submissions, totalCount, configs = [] }: { submissions: Submission[]; totalCount?: number; configs?: AssessmentConfig[] }) {
+  // Default to the first active config, so the list is pre-filtered by test
+  const defaultConfig = configs.find(c => c.is_active)?.id ?? 'all'
+  const [configFilter, setConfigFilter] = useState<string>(defaultConfig)
   const [query,       setQuery]       = useState('')
   const [sortKey,     setSortKey]     = useState<SortKey>('date')
   const [sortDir,     setSortDir]     = useState<SortDir>('desc')
@@ -149,6 +159,7 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
     .filter(s => {
       const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
       const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
+      if (configFilter !== 'all' && s.config_id !== configFilter) return false
       if (query) {
         const q = query.toLowerCase()
         if (!cand?.name?.toLowerCase().includes(q) && !cand?.email?.toLowerCase().includes(q)) return false
@@ -208,6 +219,62 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
 
   return (
     <div>
+
+      {/* ── PRUEBAS ACTIVAS PICKER ───────────────────────────────────────── */}
+      {configs.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase',
+            letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10,
+          }}>
+            📋 Prueba activa
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* "Todas" pill */}
+            <button
+              onClick={() => handleFilterChange(() => setConfigFilter('all'))}
+              style={{
+                padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
+                fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                border: `1px solid ${configFilter === 'all' ? 'rgba(67,97,238,.5)' : 'var(--border)'}`,
+                background: configFilter === 'all' ? 'rgba(67,97,238,.12)' : 'var(--card)',
+                color: configFilter === 'all' ? '#93c5fd' : 'var(--muted)',
+                fontWeight: configFilter === 'all' ? 600 : 400,
+                transition: 'all .15s',
+              }}
+            >
+              Todas ({submissions.length})
+            </button>
+
+            {/* One pill per config, active ones highlighted */}
+            {configs.map(cfg => {
+              const count = submissions.filter(s => s.config_id === cfg.id).length
+              const active = configFilter === cfg.id
+              return (
+                <button
+                  key={cfg.id}
+                  onClick={() => handleFilterChange(() => setConfigFilter(cfg.id))}
+                  style={{
+                    padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
+                    fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                    border: `1px solid ${active ? 'rgba(0,214,138,.5)' : cfg.is_active ? 'rgba(0,214,138,.2)' : 'var(--border)'}`,
+                    background: active ? 'rgba(0,214,138,.12)' : cfg.is_active ? 'rgba(0,214,138,.04)' : 'var(--card)',
+                    color: active ? 'var(--green)' : cfg.is_active ? 'rgba(0,214,138,.8)' : 'var(--muted)',
+                    fontWeight: active ? 700 : 400,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    transition: 'all .15s',
+                  }}
+                >
+                  {cfg.is_active && <span style={{ fontSize: 8, background: 'var(--green)', borderRadius: '50%', width: 7, height: 7, flexShrink: 0, display: 'inline-block' }} />}
+                  {cfg.label}
+                  <span style={{ fontSize: 11, opacity: .7, fontFamily: 'Space Mono, monospace' }}>({count})</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── SUMMARY STATS BAR ───────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {statCards.map(s => (
@@ -308,9 +375,9 @@ export function CandidatesTable({ submissions, totalCount }: { submissions: Subm
         </div>
 
         {/* Clear filters */}
-        {(fraudFilter !== 'all' || minScore) && (
+        {(fraudFilter !== 'all' || minScore || configFilter !== 'all') && (
           <button
-            onClick={() => { setFraudFilter('all'); setMinScore(''); setPage(0) }}
+            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setPage(0) }}
             style={{
               padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
               background: 'transparent', border: '1px solid var(--border)',

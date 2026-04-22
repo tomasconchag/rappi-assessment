@@ -396,6 +396,10 @@ export function scoreMathSpreadsheet(
       const expNum = typeof ac.expected === 'number' ? ac.expected : parseFloat(String(ac.expected))
       const tol = ac.tolerance ?? 1
       correct = !isNaN(gotNum) && Math.abs(gotNum - expNum) <= tol
+      // Percent cells: accept whole-number entry (e.g. candidate types 25 to mean 25% = 0.25)
+      if (!correct && ac.format === 'percent' && expNum < 1 && gotNum >= 1) {
+        correct = Math.abs(gotNum / 100 - expNum) <= tol
+      }
     }
 
     return {
