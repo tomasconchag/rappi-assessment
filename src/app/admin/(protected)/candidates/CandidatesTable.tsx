@@ -44,16 +44,19 @@ const fraudShort = (level: string) => {
 
 const scoreColor = (v: number) => v >= 70 ? 'var(--teal)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
 
-function computeOverall(s: Submission): number | null {
-  // Start from enabled_sections, then expand to include any section that actually
-  // has a score or completion flag — guards against old/null enabled_sections data
-  const baseSec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
-  const effectiveSec = [...new Set([
-    ...baseSec,
-    ...(s.roleplay_completed  || s.roleplay_score     != null ? ['roleplay'     as SectionId] : []),
+/** Returns the real set of sections for a submission, expanding beyond enabled_sections
+ *  when scores/completion flags reveal sections that weren't recorded in the DB field. */
+function effectiveSections(s: Submission): SectionId[] {
+  const base = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+  return [...new Set([
+    ...base,
+    ...(s.roleplay_completed  || s.roleplay_score      != null ? ['roleplay'     as SectionId] : []),
     ...(s.cultural_fit_completed || s.cultural_fit_score != null ? ['cultural_fit' as SectionId] : []),
   ])]
+}
 
+function computeOverall(s: Submission): number | null {
+  const effectiveSec = effectiveSections(s)
   const weights = normalizedWeights(effectiveSec, s.challenge_weights ?? undefined)
 
   const scored: { id: SectionId; score: number }[] = []
@@ -136,7 +139,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
   const triggerReEval = useCallback(async (s: Submission) => {
     const sid = s.id
     setReEvalLoading(prev => ({ ...prev, [sid]: true }))
-    const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+    const sec = effectiveSections(s)
     const calls: Promise<unknown>[] = []
     if (sec.includes('roleplay') && s.roleplay_completed && s.roleplay_score == null)
       calls.push(fetch('/api/evaluate-roleplay',    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
@@ -148,7 +151,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
   }, [])
 
   const hasPendingEval = (s: Submission) => {
-    const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+    const sec = effectiveSections(s)
     if (sec.includes('roleplay')     && s.roleplay_completed     && s.roleplay_score     == null) return true
     if (sec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null) return true
     return false
@@ -455,7 +458,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
                   : '—'
                 const fs      = pr ? fraudStyle(pr.fraud_level) : null
                 const overall = computeOverall(s)
-                const sec     = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+                const sec     = effectiveSections(s)
 
                 return (
                   <tr

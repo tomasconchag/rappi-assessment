@@ -30,8 +30,14 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const snapshots = (sub.webcam_snapshots || []) as any[]
 
   const mathAnswers = answers.filter((a: any) => a.section === 'math').sort((a: any, b: any) => a.assessment_questions?.position - b.assessment_questions?.position)
-  // ── Enabled sections — fallback to old default for legacy submissions ──────
-  const enabledSections: SectionId[] = (sub.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
+  // ── Enabled sections — expand with any section that has a score/completion
+  // flag, in case enabled_sections is null or stale in the DB ───────────────
+  const baseSections: SectionId[] = (sub.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
+  const enabledSections: SectionId[] = [...new Set([
+    ...baseSections,
+    ...(sub.roleplay_completed || (sub as any).roleplay_score != null ? ['roleplay' as SectionId] : []),
+    ...((sub as any).cultural_fit_completed || (sub as any).cultural_fit_score != null ? ['cultural_fit' as SectionId] : []),
+  ])]
   // ─────────────────────────────────────────────────────────────────────────
 
   const scoreColor  = (v: number) => v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
