@@ -129,6 +129,9 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
               ? 'El servicio de entrevistas está ocupado en este momento. Espera 1–2 minutos e intenta de nuevo.'
               : `Error en la entrevista: ${msg}`)
             setCallStatus('ended')
+            // Always finalize so the recording is stopped + saved even on error.
+            // finalize() has an endedRef guard so calling it twice is safe.
+            finalize()
           }
         })
 
