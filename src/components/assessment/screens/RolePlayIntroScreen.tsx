@@ -9,7 +9,7 @@ interface Props {
 
 const tips = [
   { emoji: '📊', text: 'Usa los datos — estudia bien el restaurante antes de iniciar la llamada.' },
-  { emoji: '💬', text: 'Sé directo — tienes 5 minutos. Ve al punto rápido.' },
+  { emoji: '💬', text: 'Sé directo — tienes 10 minutos. Ve al punto rápido.' },
   { emoji: '🎯', text: 'Propón acciones concretas — no generalices, habla de estrategias específicas de Rappi.' },
   { emoji: '🔊', text: 'Habla en voz alta — el avatar escucha y responde en tiempo real.' },
 ]
@@ -69,7 +69,7 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
           marginBottom: 0,
           fontFamily: 'DM Sans, sans-serif',
         }}>
-          Tienes 5 minutos para convencer{ownerName && restaurantName
+          Tienes 10 minutos para convencer{ownerName && restaurantName
             ? <> a <strong style={{ color: 'var(--text)' }}>{ownerName}</strong>, {ownerLabel} de <strong style={{ color: 'var(--text)' }}>{restaurantName}</strong>,</>
             : ` al ${ownerLabel} del restaurante`
           } de implementar nuevas estrategias en Rappi.
@@ -212,7 +212,7 @@ export function RolePlayIntroScreen({ onStart, roleplayBankCase }: Props) {
       }}>
         <span style={{ fontSize: 16, flexShrink: 0 }}>📋</span>
         <span>
-          <strong>Primero tendrás 5 minutos para revisar los datos del restaurante.</strong> El tiempo de la llamada empieza solo cuando tú lo indiques.
+          <strong>Primero tendrás 10 minutos para revisar los datos del restaurante.</strong> El tiempo de la llamada empieza solo cuando tú lo indiques.
         </span>
       </div>
 

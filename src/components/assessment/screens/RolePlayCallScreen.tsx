@@ -12,7 +12,7 @@ interface Props {
   roleplayBankCase?: RoleplayBankEntry | null
 }
 
-const TOTAL_SECONDS = 5 * 60
+const TOTAL_SECONDS = 10 * 60
 
 // ── Build the complete Vapi system prompt from a bank case ─────────────────
 // This is injected via assistantOverrides so the Vapi dashboard config is
@@ -352,7 +352,7 @@ ${roleplayBankCase.key_objections}`.trim()
     setTimeout(() => onDone(vapiCallIdRef.current), 1500)
   }, [onDone])
 
-  // 5-minute countdown — starts only after agent's first word (or 15s fallback)
+  // 10-minute countdown — starts only after agent's first word (or 15s fallback)
   useEffect(() => {
     if (!timerStarted) return
     const interval = setInterval(() => {

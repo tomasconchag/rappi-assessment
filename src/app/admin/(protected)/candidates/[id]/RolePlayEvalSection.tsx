@@ -154,10 +154,15 @@ export function RolePlayEvalSection({
     }
   }
 
-  // Auto-trigger evaluation when video or transcript exists but no evaluation yet
-  // Note: use === null checks (not ! falsy) so score=0 doesn't re-trigger
+  // Auto-trigger evaluation when roleplay is done but no evaluation yet.
+  // Works whether we have video, a Vapi transcript, or just the completed flag.
+  // Note: use === null checks (not ! falsy) so score=0 doesn't re-trigger.
   useEffect(() => {
-    if ((roleplayVideoPath || initialTranscript) && initialEvaluation === null && initialScore === null) {
+    if (
+      (roleplayVideoPath || initialTranscript || roleplayCompleted) &&
+      initialEvaluation === null &&
+      initialScore === null
+    ) {
       handleEvaluate()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +195,7 @@ export function RolePlayEvalSection({
               {showTranscript ? 'Ocultar' : 'Ver'} transcripción
             </button>
           )}
-          {roleplayVideoPath && (
+          {(roleplayVideoPath || transcript || roleplayCompleted) && (
             <button
               onClick={handleEvaluate}
               disabled={loading}
@@ -214,17 +219,22 @@ export function RolePlayEvalSection({
         </div>
       </div>
 
-      {/* No video warning */}
-      {!roleplayVideoPath && (
+      {/* No video / transcript status */}
+      {!roleplayVideoPath && !transcript && (
         <div style={{ padding: '20px', borderRadius: 10, background: 'rgba(245,158,11,.04)', border: '1px solid rgba(245,158,11,.15)', color: 'var(--dim)', fontSize: 13, fontFamily: 'DM Sans, sans-serif' }}>
           {roleplayCompleted
-            ? '✅ RolePlay completado — sin grabación disponible para evaluar.'
-            : '❌ RolePlay no completado.'}
+            ? '⚠️ RolePlay completado — la grabación no se guardó. Se puede intentar evaluar si el servidor tiene transcripción de Vapi.'
+            : '❌ RolePlay no completado aún.'}
+        </div>
+      )}
+      {!roleplayVideoPath && transcript && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(6,214,160,.04)', border: '1px solid rgba(6,214,160,.15)', color: 'var(--dim)', fontSize: 12.5, fontFamily: 'DM Sans, sans-serif', marginBottom: 8 }}>
+          📝 Sin video — evaluando con transcripción de Vapi.
         </div>
       )}
 
-      {/* Pending evaluation banner — shown when video exists but no score yet and not actively loading */}
-      {roleplayVideoPath && !score && !loading && !error && (
+      {/* Pending evaluation banner — shown when video or transcript exists but no score yet and not actively loading */}
+      {(roleplayVideoPath || transcript || roleplayCompleted) && !score && !loading && !error && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
           padding: '12px 16px', borderRadius: 10, marginBottom: 16,

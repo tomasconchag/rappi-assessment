@@ -558,7 +558,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
             }}>
               {[
                 ['📋', '5 min para revisar los datos del cliente'],
-                ['📞', '5 min de llamada en vivo con avatar IA'],
+                ['📞', '10 min de llamada en vivo con avatar IA'],
                 ['🎬', 'Pantalla, cámara y audio quedan grabados'],
               ].map(([icon, text]) => (
                 <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif' }}>
@@ -720,7 +720,7 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
               color: '#f59e0b', lineHeight: 1.65,
             }}>
               <strong>Recuerda:</strong>{' '}
-              Tienes 5 minutos de preparación y luego comenzará la llamada en vivo con el dueño. Usa los datos del briefing para argumentar con cifras y cerrar con un siguiente paso concreto.
+              Tienes 5 minutos de preparación y luego comenzará la llamada en vivo de 10 minutos con el dueño. Usa los datos del briefing para argumentar con cifras y cerrar con un siguiente paso concreto.
             </div>
           </div>
         </div>

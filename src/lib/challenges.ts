@@ -26,7 +26,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     id: 'roleplay',
     label: 'Role Play — Llamada con restaurante',
     icon: '📞',
-    description: 'Llamada de 5 minutos con el dueño de Heladería La Fiore (avatar IA). El candidato actúa como Farmer y debe convencer al restaurante de implementar nuevas estrategias en Rappi.',
+    description: 'Llamada de 10 minutos con el dueño de Heladería La Fiore (avatar IA). El candidato actúa como Farmer y debe convencer al restaurante de implementar nuevas estrategias en Rappi.',
     color: '#f59e0b',
     colorBg: 'rgba(245,158,11,.06)',
     colorBorder: 'rgba(245,158,11,.2)',

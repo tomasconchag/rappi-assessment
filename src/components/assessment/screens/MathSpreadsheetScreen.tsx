@@ -209,6 +209,40 @@ export function MathSpreadsheetScreen({ template, onDone, candidateEmail }: Prop
         return String(sum)
       })
 
+      // ── Step 1b: expand SUMPRODUCT(A1:A5, B1:B5, ...) ───────────────────
+      // Multiplies corresponding elements of ranges, then sums the products.
+      // Also handles single-range SUMPRODUCT (acts like SUM).
+      expr = expr.replace(/SUMPRODUCT\(([^)]+)\)/g, (_, argsStr: string) => {
+        const args = argsStr.split(',').map((a: string) => a.trim())
+        const ranges: number[][] = args.map((arg: string) => {
+          const m = arg.match(/^([A-J])(\d+):([A-J])(\d+)$/)
+          if (m) {
+            const startRow = parseInt(m[2]) - 1; const startCol = COLS.indexOf(m[1])
+            const endRow   = parseInt(m[4]) - 1; const endCol   = COLS.indexOf(m[3])
+            const vals: number[] = []
+            for (let row = startRow; row <= endRow; row++)
+              for (let col = startCol; col <= endCol; col++) {
+                const n = parseLocale(resolveCell({ row, col }))
+                vals.push(isNaN(n) ? 0 : n)
+              }
+            return vals
+          }
+          // Single cell reference
+          const sc = arg.match(/^([A-J])(\d+)$/)
+          if (sc) {
+            const n = parseLocale(resolveCell({ row: parseInt(sc[2]) - 1, col: COLS.indexOf(sc[1]) }))
+            return [isNaN(n) ? 0 : n]
+          }
+          const n = parseLocale(arg)
+          return [isNaN(n) ? 0 : n]
+        })
+        if (ranges.length === 1) return String(ranges[0].reduce((s: number, v: number) => s + v, 0))
+        const len = Math.min(...ranges.map((r: number[]) => r.length))
+        let total = 0
+        for (let i = 0; i < len; i++) total += ranges.reduce((prod: number, r: number[]) => prod * r[i], 1)
+        return String(total)
+      })
+
       // ── Step 2: replace individual cell refs (e.g. F3, H31) ─────────────
       // In the regex: colLetter is the column letter, rowNum is the 1-based row number.
       expr = expr.replace(/([A-J])(\d+)/g, (_m, colLetter: string, rowNum: string) => {
