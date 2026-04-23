@@ -88,7 +88,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const mathTotal = sub.math_score_total as number | null
   const mathPct   = (mathRaw != null && mathTotal != null && mathTotal > 0)
     ? Math.round((mathRaw / mathTotal) * 100)
-    : (mathPct)
+    : (sub.math_score_pct || 0)
 
   const overall        = sub.overall_score_pct || 0
   const overallColor   = scoreColor(overall)
