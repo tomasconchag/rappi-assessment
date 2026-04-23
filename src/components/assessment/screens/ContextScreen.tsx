@@ -89,7 +89,7 @@ export function ContextScreen({ name, onStart, enabledSections }: Props) {
           fontWeight: 700, marginBottom: 14,
           lineHeight: 1.1, letterSpacing: '-1px',
         }}>
-          {name}, aquí va lo<br />que necesitas saber
+          {name ? <>{name}, aquí va lo<br />que necesitas saber</> : <>Aquí va lo que<br />necesitas saber</>}
         </h2>
         <p style={{ color: 'var(--dim)', fontSize: 15, lineHeight: 1.7, maxWidth: 480, margin: '0 auto', fontFamily: 'Inter, DM Sans, sans-serif' }}>
           La evaluación tiene {sections.length} {sections.length === 1 ? 'etapa' : 'etapas'} en secuencia. Lee con cuidado antes de comenzar.
