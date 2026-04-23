@@ -457,10 +457,13 @@ export async function POST(req: NextRequest) {
       const { normalizedWeights } = await import('@/lib/challenges')
       const enabled = (sub.enabled_sections as string[] | null) ?? ['roleplay', 'caso', 'math']
       const weights = normalizedWeights(enabled as import('@/lib/challenges').SectionId[], (sub.challenge_weights as Record<string, number> | null) ?? undefined)
+      // roleplay_score is raw pts out of 87 — normalize to 0–100 for consistent weighting
+      const roleplayPct = Math.round(((evaluation.total as number) / 87) * 100)
       const scores: Record<string, number> = {
-        roleplay:     evaluation.total as number,
+        roleplay:     roleplayPct,
         caso:         (sub as Record<string, unknown>).caso_score_pct as number ?? 0,
         math:         (sub as Record<string, unknown>).math_score_pct as number ?? 0,
+        cultural_fit: (sub as Record<string, unknown>).cultural_fit_score as number ?? 0,
       }
       const newOverall = Math.round(
         enabled.reduce((sum, sec) => {

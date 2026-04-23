@@ -51,7 +51,8 @@ function computeOverall(s: Submission): number | null {
   const scored: { id: SectionId; score: number }[] = []
   if (sec.includes('math')         && s.math_score_pct    != null) scored.push({ id: 'math',         score: s.math_score_pct })
   if (sec.includes('caso')         && s.caso_score_pct    != null) scored.push({ id: 'caso',         score: s.caso_score_pct })
-  if (sec.includes('roleplay')     && s.roleplay_score    != null) scored.push({ id: 'roleplay',     score: s.roleplay_score })
+  // roleplay_score is raw pts out of 87 — normalize to 0–100 for consistent weighting
+  if (sec.includes('roleplay')     && s.roleplay_score    != null) scored.push({ id: 'roleplay',     score: Math.round((s.roleplay_score / 87) * 100) })
   if (sec.includes('cultural_fit') && s.cultural_fit_score != null) scored.push({ id: 'cultural_fit', score: s.cultural_fit_score })
 
   if (scored.length === 0) return null
