@@ -33,7 +33,7 @@ function playBeeps(freq: number, count: number, gapMs: number) {
   } catch { /* silently ignore if AudioContext unavailable */ }
 }
 const COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-const NUM_ROWS = 45
+const NUM_ROWS = 65
 const COL_WIDTHS: Record<number, number> = {
   0: 28, 1: 28, 2: 28, 3: 48, 4: 340, 5: 140, 6: 180, 7: 140, 8: 120, 9: 60,
 }
