@@ -231,6 +231,9 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
               setCallError(`Error en la llamada: ${msg}`)
             }
             setCallStatus('ended')
+            // Always finalize so the recording is stopped + saved even on error.
+            // finalize() has an endedRef guard so calling it twice is safe.
+            finalize()
           }
         })
 

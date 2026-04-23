@@ -160,6 +160,12 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const roleCameraStreamRef  = useRef<MediaStream | null>(null)
   const roleScreenStreamRef  = useRef<MediaStream | null>(null)
   const vapiCallIdRef        = useRef<string | null>(null)  // set by RolePlayCallScreen
+  // Pre-uploaded video paths — set immediately when each section ends, used in submitAll
+  const roleplayVideoPathRef   = useRef<string | null>(null)
+  const culturalFitVideoPathRef = useRef<string | null>(null)
+  // Stable ref for candidate email so async handlers don't capture stale state
+  const candidateEmailRef = useRef<string>('')
+  useEffect(() => { candidateEmailRef.current = state.candidate?.email ?? '' }, [state.candidate?.email])
   // Cultural Fit screen recording
   const cfRecorderRef      = useRef<MediaRecorder | null>(null)
   const cfChunksRef        = useRef<Blob[]>([])
@@ -463,34 +469,42 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         }
       }
 
-      let roleplayVideoPath: string | null = null
-      if (state.roleplayVideoBlob) {
+      // Prefer the pre-uploaded path (set immediately when roleplay ended).
+      // Fall back to uploading from blob if the early upload failed or was skipped.
+      let roleplayVideoPath: string | null = roleplayVideoPathRef.current
+      if (!roleplayVideoPath && state.roleplayVideoBlob) {
         try {
           roleplayVideoPath = await uploadVideoAtomic({
             blob: state.roleplayVideoBlob,
             mimeType: state.roleplayVideoMimeType,
             section: 'roleplay',
             candidateEmail: state.candidate.email,
-            label: 'RolePlay',
+            label: 'RolePlay (fallback)',
           })
+          console.log('[submitAll] RolePlay fallback upload success')
         } catch (uploadErr) {
-          console.error('[upload] RolePlay final failure:', uploadErr)
+          console.error('[upload] RolePlay final failure (both early + fallback failed):', uploadErr)
         }
+      } else if (roleplayVideoPath) {
+        console.log('[submitAll] using pre-uploaded roleplay path:', roleplayVideoPath)
       }
 
-      let culturalFitVideoPath: string | null = null
-      if (state.culturalFitVideoBlob) {
+      let culturalFitVideoPath: string | null = culturalFitVideoPathRef.current
+      if (!culturalFitVideoPath && state.culturalFitVideoBlob) {
         try {
           culturalFitVideoPath = await uploadVideoAtomic({
             blob: state.culturalFitVideoBlob,
             mimeType: state.culturalFitVideoMimeType,
             section: 'cultural_fit',
             candidateEmail: state.candidate.email,
-            label: 'CulturalFit',
+            label: 'CulturalFit (fallback)',
           })
+          console.log('[submitAll] CulturalFit fallback upload success')
         } catch (uploadErr) {
-          console.error('[upload] CulturalFit final failure:', uploadErr)
+          console.error('[upload] CulturalFit final failure (both early + fallback failed):', uploadErr)
         }
+      } else if (culturalFitVideoPath) {
+        console.log('[submitAll] using pre-uploaded cultural_fit path:', culturalFitVideoPath)
       }
 
       const snapshotResults = await Promise.all(
@@ -621,10 +635,28 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const handleCulturalFitDone = useCallback(() => {
     const recorder = cfRecorderRef.current
 
-    const collectAndFinish = () => {
+    const collectAndFinish = async () => {
       const blob = cfChunksRef.current.length > 0
         ? new Blob(cfChunksRef.current, { type: cfMimeRef.current })
         : null
+
+      // Upload immediately so the path is safe before submitAll runs
+      if (blob && candidateEmailRef.current) {
+        try {
+          const path = await uploadVideoAtomic({
+            blob,
+            mimeType: cfMimeRef.current,
+            section: 'cultural_fit',
+            candidateEmail: candidateEmailRef.current,
+            label: 'CulturalFit (early upload)',
+          })
+          culturalFitVideoPathRef.current = path
+          console.log('[cultural_fit] early upload success:', path)
+        } catch (uploadErr) {
+          console.error('[cultural_fit] early upload failed — will retry in submitAll:', uploadErr)
+        }
+      }
+
       dispatch({ type: 'SET_CULTURAL_FIT_DONE', videoBlob: blob, mimeType: cfMimeRef.current })
       dispatch({ type: 'GO_SCREEN', screen: 'cultural_fit_done' })
     }
@@ -694,6 +726,26 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       const blob = roleChunksRef.current.length > 0
         ? new Blob(roleChunksRef.current, { type: roleMimeRef.current })
         : null
+
+      // ── Upload video immediately — don't wait until final submitAll ──────
+      // Uploading here means the video is safe even if the page reloads or the
+      // network is flaky later during math/cultural-fit sections.
+      if (blob && candidateEmailRef.current) {
+        try {
+          const path = await uploadVideoAtomic({
+            blob,
+            mimeType: roleMimeRef.current,
+            section: 'roleplay',
+            candidateEmail: candidateEmailRef.current,
+            label: 'RolePlay (early upload)',
+          })
+          roleplayVideoPathRef.current = path
+          console.log('[roleplay] early upload success:', path)
+        } catch (uploadErr) {
+          console.error('[roleplay] early upload failed — will retry in submitAll:', uploadErr)
+          // Don't abort — keep blob in state for fallback upload in submitAll
+        }
+      }
 
       // Fetch Vapi transcript (both sides) — poll up to 3 attempts with 5s delay.
       // Vapi may need a few seconds to finalize the transcript after call-end.
