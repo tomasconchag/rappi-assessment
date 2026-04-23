@@ -209,11 +209,18 @@ export function MathSpreadsheetScreen({ template, onDone, candidateEmail }: Prop
         return String(sum)
       })
 
-      // ── Step 1b: expand SUMPRODUCT(A1:A5, B1:B5, ...) ───────────────────
-      // Multiplies corresponding elements of ranges, then sums the products.
-      // Also handles single-range SUMPRODUCT (acts like SUM).
-      expr = expr.replace(/SUMPRODUCT\(([^)]+)\)/g, (_, argsStr: string) => {
-        const args = argsStr.split(',').map((a: string) => a.trim())
+      // ── Step 1b: expand SUMPRODUCT/SUMPRODUCTO(A1:A5, B1:B5, ...) ──────────
+      // Handles SUMPRODUCTO (Spanish alias), comma AND semicolon separators,
+      // and array-multiplication syntax: SUMPRODUCT(F31:F35*G31:G35).
+      expr = expr.replace(/SUMPRODUCTO?\(([^)]+)\)/g, (_, argsStr: string) => {
+        // Normalize: replace array multiplication * inside range refs with comma
+        // e.g. "F31:F35*G31:G35" → "F31:F35,G31:G35"
+        const normalized = argsStr.replace(
+          /([A-J]\d+:[A-J]\d+)\s*\*\s*([A-J]\d+:[A-J]\d+)/g,
+          '$1,$2'
+        )
+        // Split on comma OR semicolon (both used in different Excel locales)
+        const args = normalized.split(/[,;]/).map((a: string) => a.trim())
         const ranges: number[][] = args.map((arg: string) => {
           const m = arg.match(/^([A-J])(\d+):([A-J])(\d+)$/)
           if (m) {
@@ -550,7 +557,8 @@ export function MathSpreadsheetScreen({ template, onDone, candidateEmail }: Prop
         <p style={{ fontSize: 13, color: 'var(--dim)', marginBottom: 8, fontFamily: 'Inter, DM Sans, sans-serif', lineHeight: 1.6 }}>
           Haz clic en una celda <span style={{ color: '#fcd34d', fontWeight: 600 }}>amarilla</span> y escribe tu fórmula directamente (ej:{' '}
           <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>=F3*4</code>,{' '}
-          <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>=SUM(H30:H34)</code>).
+          <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>=SUMA(H31:H35)</code>,{' '}
+          <code style={{ background: 'rgba(255,255,255,.06)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>+SUMA(H31:H35)</code>).
           {' '}Respuestas: <strong style={{ color: answeredCount === totalQ ? 'var(--green)' : 'var(--text)' }}>{answeredCount}/{totalQ}</strong>
         </p>
       </div>
