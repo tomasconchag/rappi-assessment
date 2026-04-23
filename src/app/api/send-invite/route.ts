@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server'
-import { sendMail, isSmtpConfigured } from '@/lib/smtp'
+import { sendMailAs, isSmtpConfigured } from '@/lib/smtp'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
 function formatDeadline(endsAt: string | null): string | null {
   if (!endsAt) return null
@@ -144,6 +145,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Email not configured (set SMTP_USER + SMTP_PASS)' }, { status: 500 })
   }
 
+  // Get logged-in admin's email to send from their account
+  const authClient = await createClient()
+  const { data: { user: adminUser } } = await authClient.auth.getUser()
+  const adminEmail = adminUser?.email ?? null
+
   const supabase = createAdminClient()
   const { data: cohort } = await supabase
     .from('cohorts')
@@ -163,7 +169,7 @@ export async function POST(req: NextRequest) {
 
   for (const email of emails) {
     try {
-      await sendMail({
+      await sendMailAs(adminEmail, {
         to: email,
         subject: `Invitación al Assessment Rappi — ${cohort.name}`,
         html: buildEmailHtml(cohort.name, inviteUrl, email, deadline),

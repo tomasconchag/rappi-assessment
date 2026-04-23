@@ -108,6 +108,43 @@ export async function sendMail({ to, subject, html }: SendMailOptions): Promise<
   throw lastError
 }
 
+/**
+ * Sends an email FROM a specific account matched by email address.
+ * If the preferred email doesn't match any configured account, falls back to round-robin.
+ * Used so each admin sends from their own Gmail account.
+ */
+export async function sendMailAs(preferredEmail: string | null, { to, subject, html }: SendMailOptions): Promise<void> {
+  const accounts = getAccounts()
+
+  if (accounts.length === 0) {
+    throw new Error('No SMTP accounts configured. Set SMTP_USER + SMTP_PASS.')
+  }
+
+  // Find the account matching the admin's email
+  const preferredIdx = preferredEmail
+    ? accounts.findIndex(a => a.user.toLowerCase() === preferredEmail.toLowerCase())
+    : -1
+
+  // Start from preferred account (or round-robin if no match)
+  const startIdx = preferredIdx >= 0 ? preferredIdx : _counter++ % accounts.length
+
+  let lastError: unknown
+  for (let i = 0; i < accounts.length; i++) {
+    const idx     = (startIdx + i) % accounts.length
+    const account = accounts[idx]
+    try {
+      await account.transporter.sendMail({ from: account.from, to, subject, html })
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`[smtp] account[${idx}] (${account.user}) failed for ${to}: ${msg}`)
+      lastError = err
+    }
+  }
+
+  throw lastError
+}
+
 /** Returns true if at least one SMTP account is configured. */
 export function isSmtpConfigured(): boolean {
   return getAccounts().length > 0
