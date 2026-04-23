@@ -73,7 +73,7 @@ export function CompletionScreen({ name, submitting, error, confirmationCode }: 
             fontWeight: 700, marginBottom: 14,
             letterSpacing: '-1px', lineHeight: 1.1,
           }}>
-            {name}, completaste<br />el assessment
+            ¡Completaste<br />el Assessment!
           </h2>
           <p style={{
             fontSize: 15, color: 'var(--dim)',
@@ -150,7 +150,7 @@ export function CompletionScreen({ name, submitting, error, confirmationCode }: 
                 margin: 0, fontWeight: 600,
               }}>
                 <span style={{ fontSize: 18 }}>🚀</span>
-                ¡Mucho éxito en el proceso, {name}!
+                ¡Mucho éxito en el proceso!
               </p>
             </div>
           </div>
