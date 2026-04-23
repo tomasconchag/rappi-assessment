@@ -73,7 +73,7 @@ function ScoreBar({ value }: { value: number }) {
 }
 
 function exportCSV(submissions: Submission[]) {
-  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'Caso', 'RolePlay', 'Cultural Fit Score', 'Cultural Fit Band', 'Video', 'Integridad', 'Fraud Score']
+  const headers = ['Nombre', 'Email', 'Cédula', 'Fecha', 'Score General', 'Math', 'RolePlay', 'Cultural Fit Score', 'Cultural Fit Band', 'Video', 'Integridad', 'Fraud Score']
   const rows = submissions.map(s => {
     const cand = Array.isArray(s.candidates) ? s.candidates[0] : s.candidates
     const pr   = Array.isArray(s.proctoring_reports) ? s.proctoring_reports[0] : s.proctoring_reports
@@ -85,7 +85,6 @@ function exportCSV(submissions: Submission[]) {
       date,
       computeOverall(s) ?? '',
       s.math_score_pct ?? '',
-      s.caso_score_pct ?? '',
       s.roleplay_score ?? '',
       s.cultural_fit_score ?? '',
       s.cultural_fit_band ?? '',
@@ -102,7 +101,7 @@ function exportCSV(submissions: Submission[]) {
   URL.revokeObjectURL(url)
 }
 
-type SortKey = 'date' | 'overall' | 'math' | 'caso' | 'roleplay'
+type SortKey = 'date' | 'overall' | 'math' | 'roleplay'
 type SortDir = 'asc' | 'desc'
 type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
 
@@ -130,8 +129,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
       calls.push(fetch('/api/evaluate-roleplay',    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
     if (sec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null)
       calls.push(fetch('/api/evaluate-cultural-fit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
-    if (sec.includes('caso') && s.caso_score_pct == null)
-      calls.push(fetch('/api/evaluate-caso',         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId: sid, force: true }) }))
     await Promise.allSettled(calls)
     setReEvalLoading(prev => ({ ...prev, [sid]: false }))
     setReEvalDone(prev => ({ ...prev, [sid]: true }))
@@ -141,7 +138,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
     const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
     if (sec.includes('roleplay')     && s.roleplay_completed     && s.roleplay_score     == null) return true
     if (sec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null) return true
-    if (sec.includes('caso')         && s.caso_score_pct         == null)                         return true
     return false
   }
 
@@ -173,7 +169,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
       if (sortKey === 'date')    { va = new Date(a.completed_at || 0).getTime(); vb = new Date(b.completed_at || 0).getTime() }
       else if (sortKey === 'overall')  { va = computeOverall(a) ?? 0; vb = computeOverall(b) ?? 0 }
       else if (sortKey === 'math')     { va = a.math_score_pct ?? 0;  vb = b.math_score_pct ?? 0 }
-      else if (sortKey === 'caso')     { va = a.caso_score_pct ?? 0;  vb = b.caso_score_pct ?? 0 }
       else if (sortKey === 'roleplay') { va = a.roleplay_score ?? 0;  vb = b.roleplay_score ?? 0 }
       return sortDir === 'desc' ? vb - va : va - vb
     })
@@ -420,12 +415,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
                 </th>
                 <th
                   style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => handleSort('caso')}
-                >
-                  Caso{sortIcon('caso')}
-                </th>
-                <th
-                  style={{ ...th, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => handleSort('roleplay')}
                 >
                   Role Play{sortIcon('roleplay')}
@@ -438,7 +427,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
             <tbody>
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '56px 20px', textAlign: 'center' }}>
+                  <td colSpan={8} style={{ padding: '56px 20px', textAlign: 'center' }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>🔍</div>
                     <div style={{ fontSize: 14, color: 'var(--dim)', fontFamily: 'DM Sans' }}>
                       {query ? `Sin resultados para "${query}"` : 'No hay candidatos aún.'}
@@ -506,30 +495,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
                             {s.math_score_pct || 0}%
                           </span>
                       }
-                    </td>
-
-                    {/* Caso */}
-                    <td style={td}>
-                      {!sec.includes('caso') ? (
-                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
-                      ) : s.caso_score_pct != null ? (
-                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.caso_score_pct), fontWeight: 700 }}>
-                          {s.caso_score_pct}%
-                        </span>
-                      ) : (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '3px 9px', borderRadius: 100,
-                          fontSize: 10.5, fontFamily: 'Space Mono, monospace', fontWeight: 700,
-                          color: '#60a5fa',
-                          background: 'rgba(96,165,250,.08)',
-                          border: '1px solid rgba(96,165,250,.25)',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#60a5fa', flexShrink: 0 }} />
-                          Pendiente
-                        </span>
-                      )}
                     </td>
 
                     {/* Role Play */}

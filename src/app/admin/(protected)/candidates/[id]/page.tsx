@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { RolePlayEvalSection } from './RolePlayEvalSection'
 import { CulturalFitEvalSection } from './CulturalFitEvalSection'
-import { CasoEvalSection } from './CasoEvalSection'
 import { CandidateActions } from './CandidateActions'
 import type { SectionId } from '@/lib/challenges'
 
@@ -31,9 +30,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const snapshots = (sub.webcam_snapshots || []) as any[]
 
   const mathAnswers = answers.filter((a: any) => a.section === 'math').sort((a: any, b: any) => a.assessment_questions?.position - b.assessment_questions?.position)
-  const casoAnswers = answers.filter((a: any) => a.section === 'caso')
-  const casoCompleted = casoAnswers.length > 0
-
   // ── Enabled sections — fallback to old default for legacy submissions ──────
   const enabledSections: SectionId[] = (sub.enabled_sections as SectionId[]) ?? ['sharktank', 'caso', 'math']
   // ─────────────────────────────────────────────────────────────────────────
@@ -98,7 +94,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const initials = cand?.name?.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase() || '?'
   const dateStr  = sub.completed_at ? new Date(sub.completed_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
-  const sectionEmojis: Record<string, string> = { sharktank: '🦈', roleplay: '📞', caso: '📊', math: '🧮', cultural_fit: '🎙' }
+  const sectionEmojis: Record<string, string> = { sharktank: '🦈', roleplay: '📞', math: '🧮', cultural_fit: '🎙' }
 
   const card: React.CSSProperties = {
     background: 'var(--card)',
@@ -467,15 +463,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
           roleplayVideoPath={sub.roleplay_video_path ?? null}
           roleplayCompleted={!!sub.roleplay_completed}
           caseContext={roleplayCaseContext}
-        />
-      )}
-
-      {/* ── CASO AI EVALUATION ───────────────────────────────────────────── */}
-      {(enabledSections.includes('caso') || casoCompleted) && (
-        <CasoEvalSection
-          submissionId={id}
-          initialScore={(sub as any).caso_score_pct ?? null}
-          casoCompleted={casoCompleted}
         />
       )}
 

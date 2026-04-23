@@ -154,10 +154,10 @@ export function RolePlayEvalSection({
     }
   }
 
-  // Auto-trigger evaluation when video exists but no evaluation yet
+  // Auto-trigger evaluation when video or transcript exists but no evaluation yet
   // Note: use === null checks (not ! falsy) so score=0 doesn't re-trigger
   useEffect(() => {
-    if (roleplayVideoPath && initialEvaluation === null && initialScore === null) {
+    if ((roleplayVideoPath || initialTranscript) && initialEvaluation === null && initialScore === null) {
       handleEvaluate()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

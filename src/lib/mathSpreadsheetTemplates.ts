@@ -381,6 +381,14 @@ export function scoreMathSpreadsheet(
   pct: number           // final time-adjusted score
   details: { q: number; label: string; expected: string; got: string; correct: boolean }[]
 } {
+  // Parse Colombian-formatted numbers ("72.000" → 72000, "1.500.000" → 1500000)
+  function parseLocale(str: string): number {
+    const s = str.trim()
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) return parseFloat(s.replace(/\./g, ''))
+    if (s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.'))
+    return parseFloat(s)
+  }
+
   const total = template.answerCells.length
   const details = template.answerCells.map(ac => {
     const ans = answers.find(a => a.r === ac.r && a.c === ac.c)
@@ -392,7 +400,7 @@ export function scoreMathSpreadsheet(
       const expStr = String(ac.expected).trim().toLowerCase()
       correct = gotStr === expStr
     } else {
-      const gotNum = typeof got === 'number' ? got : parseFloat(String(got ?? ''))
+      const gotNum = typeof got === 'number' ? got : parseLocale(String(got ?? ''))
       const expNum = typeof ac.expected === 'number' ? ac.expected : parseFloat(String(ac.expected))
       const tol = ac.tolerance ?? 1
       correct = !isNaN(gotNum) && Math.abs(gotNum - expNum) <= tol
