@@ -326,7 +326,7 @@ export function CulturalFitPrepScreen({ onReady }: Props) {
               Todo listo — grabación activa
             </h2>
             <p style={{ fontSize: 14, color: 'var(--dim)', marginBottom: 16, lineHeight: 1.7, fontFamily: 'DM Sans' }}>
-              La entrevista con <strong style={{ color: 'var(--text)' }}>Simón</strong> comenzará automáticamente cuando expire el temporizador, o puedes iniciarla ahora con el botón de arriba.
+              La entrevista con <strong style={{ color: 'var(--text)' }}>Simón</strong> comenzará automáticamente cuando expire el temporizador, o puedes iniciarla ahora.
             </p>
             <div style={{ display: 'flex', gap: 20, justifyContent: 'center', flexWrap: 'wrap', marginTop: 24 }}>
               {[
@@ -347,6 +347,18 @@ export function CulturalFitPrepScreen({ onReady }: Props) {
                 </div>
               ))}
             </div>
+            <button
+              onClick={handleReady}
+              style={{
+                marginTop: 32,
+                padding: '14px 40px', borderRadius: 10, fontSize: 14, fontWeight: 700,
+                background: 'linear-gradient(135deg,#a855f7,#7c3aed)',
+                border: 'none', color: '#fff', fontFamily: 'DM Sans', cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(168,85,247,.35)',
+              }}
+            >
+              Comenzar entrevista →
+            </button>
           </div>
         )}
       </div>
