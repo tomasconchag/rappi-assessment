@@ -45,18 +45,29 @@ const fraudShort = (level: string) => {
 const scoreColor = (v: number) => v >= 70 ? 'var(--teal)' : v >= 40 ? 'var(--gold)' : '#ff6b6b'
 
 function computeOverall(s: Submission): number | null {
-  const sec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
-  const weights = normalizedWeights(sec, s.challenge_weights ?? undefined)
+  // Start from enabled_sections, then expand to include any section that actually
+  // has a score or completion flag — guards against old/null enabled_sections data
+  const baseSec = (s.enabled_sections ?? ['sharktank', 'caso', 'math']) as SectionId[]
+  const effectiveSec = [...new Set([
+    ...baseSec,
+    ...(s.roleplay_completed  || s.roleplay_score     != null ? ['roleplay'     as SectionId] : []),
+    ...(s.cultural_fit_completed || s.cultural_fit_score != null ? ['cultural_fit' as SectionId] : []),
+  ])]
+
+  const weights = normalizedWeights(effectiveSec, s.challenge_weights ?? undefined)
 
   const scored: { id: SectionId; score: number }[] = []
-  if (sec.includes('math')         && s.math_score_pct    != null) scored.push({ id: 'math',         score: s.math_score_pct })
-  if (sec.includes('caso')         && s.caso_score_pct    != null) scored.push({ id: 'caso',         score: s.caso_score_pct })
+  if (effectiveSec.includes('math')         && s.math_score_pct     != null) scored.push({ id: 'math',         score: s.math_score_pct })
+  if (effectiveSec.includes('caso')         && s.caso_score_pct     != null) scored.push({ id: 'caso',         score: s.caso_score_pct })
   // roleplay_score is raw pts out of 87 — normalize to 0–100 for consistent weighting
-  if (sec.includes('roleplay')     && s.roleplay_score    != null) scored.push({ id: 'roleplay',     score: Math.round((s.roleplay_score / 87) * 100) })
-  if (sec.includes('cultural_fit') && s.cultural_fit_score != null) scored.push({ id: 'cultural_fit', score: s.cultural_fit_score })
+  if (effectiveSec.includes('roleplay')     && s.roleplay_score     != null) scored.push({ id: 'roleplay',     score: Math.round((s.roleplay_score / 87) * 100) })
+  // Completed but not yet manually scored → treat as 0 so it still pulls the average down
+  if (effectiveSec.includes('roleplay')     && s.roleplay_completed  && s.roleplay_score     == null) scored.push({ id: 'roleplay',     score: 0 })
+  if (effectiveSec.includes('cultural_fit') && s.cultural_fit_score  != null) scored.push({ id: 'cultural_fit', score: s.cultural_fit_score })
+  if (effectiveSec.includes('cultural_fit') && s.cultural_fit_completed && s.cultural_fit_score == null) scored.push({ id: 'cultural_fit', score: 0 })
 
   if (scored.length === 0) return null
-  const weightTotal = scored.reduce((sum, { id }) => sum + (weights[id] ?? 0), 0)
+  const weightTotal = effectiveSec.reduce((sum, id) => sum + (weights[id] ?? 0), 0)
   if (weightTotal === 0) return null
   const weightedSum = scored.reduce((sum, { id, score }) => sum + score * (weights[id] ?? 0), 0)
   return Math.round(weightedSum / weightTotal)
