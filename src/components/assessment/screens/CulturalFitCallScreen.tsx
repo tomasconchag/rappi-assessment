@@ -225,7 +225,32 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
             {mins}:{secs}
           </span>
         </div>
-        <div />
+        {/* End call button — top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginRight: 170 }}>
+          {!confirmEnd ? (
+            <button
+              onClick={() => setConfirmEnd(true)}
+              style={{
+                padding: '6px 14px', borderRadius: 7,
+                background: 'rgba(255,107,107,.1)', border: '1px solid rgba(255,107,107,.3)',
+                color: '#ff6b6b', fontFamily: 'Space Mono, monospace', fontSize: 10,
+                letterSpacing: '.5px', cursor: 'pointer', textTransform: 'uppercase',
+              }}
+            >
+              Terminar entrevista
+            </button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', letterSpacing: '.3px' }}>¿Confirmas?</span>
+              <button onClick={finalize} style={{ padding: '6px 14px', borderRadius: 7, background: 'rgba(255,107,107,.2)', border: '1px solid rgba(255,107,107,.5)', color: '#ff6b6b', fontFamily: 'Space Mono, monospace', fontSize: 10, letterSpacing: '.5px', cursor: 'pointer', fontWeight: 700 }}>
+                Sí, terminar
+              </button>
+              <button onClick={() => setConfirmEnd(false)} style={{ padding: '6px 14px', borderRadius: 7, background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)', fontFamily: 'Space Mono, monospace', fontSize: 10, cursor: 'pointer' }}>
+                Cancelar
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main layout */}
