@@ -38,6 +38,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
   const [agentSpeaking, setAgentSpeaking] = useState(false)
   const [callError,     setCallError]     = useState<string | null>(null)
   const [timerStarted,  setTimerStarted]  = useState(false)
+  const [retryKey,      setRetryKey]      = useState(0)   // increment to re-run Vapi effect
 
   const warned60Ref      = useRef(false)
   const timerStartedRef  = useRef(false)
@@ -162,7 +163,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
         vapiRef.current = null
       }
     }
-  }, [finalize, startTimer]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [finalize, startTimer, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 5-minute countdown — starts only after agent's first word (or 15s fallback)
   useEffect(() => {
@@ -357,10 +358,33 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
             )}
           </div>
 
-          {/* Error */}
+          {/* Error + retry */}
           {callError && (
-            <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(224,53,84,.08)', border: '1px solid rgba(224,53,84,.2)', borderRadius: 8, fontSize: 12, color: '#f07090', fontFamily: 'DM Sans', maxWidth: 280, textAlign: 'center' }}>
-              {callError}
+            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <div style={{ padding: '10px 14px', background: 'rgba(224,53,84,.08)', border: '1px solid rgba(224,53,84,.2)', borderRadius: 8, fontSize: 12, color: '#f07090', fontFamily: 'DM Sans', maxWidth: 280, textAlign: 'center' }}>
+                {callError}
+              </div>
+              <button
+                onClick={() => {
+                  endedRef.current        = false
+                  timerStartedRef.current = false
+                  warned60Ref.current     = false
+                  setCallError(null)
+                  setCallStatus('connecting')
+                  setSecondsLeft(TOTAL_SECONDS)
+                  setCallDuration(0)
+                  setTimerStarted(false)
+                  setRetryKey(k => k + 1)
+                }}
+                style={{
+                  padding: '7px 18px', borderRadius: 8,
+                  background: 'rgba(168,85,247,.12)', border: '1px solid rgba(168,85,247,.3)',
+                  color: '#a855f7', fontFamily: 'Space Mono, monospace', fontSize: 10,
+                  letterSpacing: '.5px', cursor: 'pointer', textTransform: 'uppercase',
+                }}
+              >
+                🔄 Reintentar
+              </button>
             </div>
           )}
         </div>

@@ -59,6 +59,14 @@ export function RolePlayPrepScreen({ onReady, voiceProvider = 'vapi', onPhoneCap
   const cameraVideoRef  = useRef<HTMLVideoElement | null>(null)
   onReadyRef.current    = onReady
 
+  // Precarga el SDK de Vapi mientras el candidato lee el briefing.
+  // Cuando llegue a RolePlayCallScreen, el módulo ya está en caché → 0ms de descarga.
+  useEffect(() => {
+    if (voiceProvider === 'vapi') {
+      import('@vapi-ai/web').catch(() => {})
+    }
+  }, [voiceProvider])
+
   // Stop camera stream on unmount ONLY if we haven't handed it off to the parent
   useEffect(() => {
     return () => {

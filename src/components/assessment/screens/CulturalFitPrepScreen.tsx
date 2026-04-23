@@ -43,6 +43,12 @@ export function CulturalFitPrepScreen({ onReady }: Props) {
   const cameraVideoRef  = useRef<HTMLVideoElement | null>(null)
   onReadyRef.current    = onReady
 
+  // Precarga el SDK de Vapi mientras el candidato está en prep.
+  // Cuando llegue a CulturalFitCallScreen, el módulo ya está en caché → 0ms de descarga.
+  useEffect(() => {
+    import('@vapi-ai/web').catch(() => {})
+  }, [])
+
   useEffect(() => {
     return () => {
       if (cameraStreamRef.current) {

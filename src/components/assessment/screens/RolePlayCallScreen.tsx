@@ -97,6 +97,7 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
   const [isSpeakerOn,  setIsSpeakerOn]  = useState(true)
   const [agentSpeaking, setAgentSpeaking] = useState(false)
   const [callError,    setCallError]    = useState<string | null>(null)
+  const [retryKey,     setRetryKey]     = useState(0)   // increment to re-run Vapi effect
 
   const [timerStarted, setTimerStarted] = useState(false)
 
@@ -138,6 +139,19 @@ export function RolePlayCallScreen({ onDone, cameraStream, voiceProvider, candid
       if (durationRef.current) clearInterval(durationRef.current)
     }
   }, [callStatus])
+
+  // Retry: reset all state so the Vapi effect can re-run cleanly
+  const handleRetry = useCallback(() => {
+    endedRef.current       = false
+    timerStartedRef.current = false
+    warned60Ref.current    = false
+    setCallError(null)
+    setCallStatus('connecting')
+    setSecondsLeft(TOTAL_SECONDS)
+    setCallDuration(0)
+    setTimerStarted(false)
+    setRetryKey(k => k + 1)
+  }, [])
 
   // ── Vapi integration ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -282,7 +296,7 @@ ${roleplayBankCase.key_objections}`.trim()
         vapiRef.current = null
       }
     }
-  }, [voiceProvider, startTimer]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voiceProvider, startTimer, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Arbol integration ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -589,14 +603,27 @@ ${roleplayBankCase.key_objections}`.trim()
                   </div>
                 )}
 
-                {/* Error message */}
+                {/* Error message + retry */}
                 {callError && (
-                  <div style={{
-                    fontSize: 10, fontFamily: 'DM Sans, sans-serif',
-                    color: '#ff6b6b', textAlign: 'center', padding: '0 8px',
-                    lineHeight: 1.4,
-                  }}>
-                    {callError}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      fontSize: 10, fontFamily: 'DM Sans, sans-serif',
+                      color: '#ff6b6b', textAlign: 'center', padding: '0 8px',
+                      lineHeight: 1.4,
+                    }}>
+                      {callError}
+                    </div>
+                    <button
+                      onClick={handleRetry}
+                      style={{
+                        padding: '7px 18px', borderRadius: 8,
+                        background: 'rgba(245,158,11,.15)', border: '1px solid rgba(245,158,11,.4)',
+                        color: '#f59e0b', fontFamily: 'Space Mono, monospace', fontSize: 10,
+                        letterSpacing: '.5px', cursor: 'pointer', textTransform: 'uppercase',
+                      }}
+                    >
+                      🔄 Reintentar
+                    </button>
                   </div>
                 )}
               </div>
