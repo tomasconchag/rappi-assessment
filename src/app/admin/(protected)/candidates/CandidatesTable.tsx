@@ -11,6 +11,8 @@ interface Submission {
   completed_at: string | null
   overall_score_pct: number | null
   math_score_pct: number | null
+  math_score_raw: number | null
+  math_score_total: number | null
   caso_score_pct: number | null
   roleplay_score: number | null
   cultural_fit_score: number | null
@@ -55,12 +57,19 @@ function effectiveSections(s: Submission): SectionId[] {
   ])]
 }
 
+/** Recompute math % from raw/total — stored pct can be stale from older code. */
+function mathScorePct(s: Submission): number {
+  if (s.math_score_raw != null && s.math_score_total != null && s.math_score_total > 0)
+    return Math.round((s.math_score_raw / s.math_score_total) * 100)
+  return s.math_score_pct ?? 0
+}
+
 function computeOverall(s: Submission): number | null {
   const effectiveSec = effectiveSections(s)
   const weights = normalizedWeights(effectiveSec, s.challenge_weights ?? undefined)
 
   const scored: { id: SectionId; score: number }[] = []
-  if (effectiveSec.includes('math')         && s.math_score_pct     != null) scored.push({ id: 'math',         score: s.math_score_pct })
+  if (effectiveSec.includes('math')         && s.math_score_pct     != null) scored.push({ id: 'math',         score: mathScorePct(s) })
   if (effectiveSec.includes('caso')         && s.caso_score_pct     != null) scored.push({ id: 'caso',         score: s.caso_score_pct })
   // roleplay_score is raw pts out of 87 — normalize to 0–100 for consistent weighting
   if (effectiveSec.includes('roleplay')     && s.roleplay_score     != null) scored.push({ id: 'roleplay',     score: Math.round((s.roleplay_score / 87) * 100) })
@@ -100,7 +109,7 @@ function exportCSV(submissions: Submission[]) {
       cand?.cedula || '',
       date,
       computeOverall(s) ?? '',
-      s.math_score_pct ?? '',
+      mathScorePct(s),
       s.roleplay_score ?? '',
       s.cultural_fit_score ?? '',
       s.cultural_fit_band ?? '',
@@ -184,7 +193,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
       let va = 0, vb = 0
       if (sortKey === 'date')    { va = new Date(a.completed_at || 0).getTime(); vb = new Date(b.completed_at || 0).getTime() }
       else if (sortKey === 'overall')  { va = computeOverall(a) ?? 0; vb = computeOverall(b) ?? 0 }
-      else if (sortKey === 'math')     { va = a.math_score_pct ?? 0;  vb = b.math_score_pct ?? 0 }
+      else if (sortKey === 'math')     { va = mathScorePct(a);  vb = mathScorePct(b) }
       else if (sortKey === 'roleplay') { va = a.roleplay_score ?? 0;  vb = b.roleplay_score ?? 0 }
       return sortDir === 'desc' ? vb - va : va - vb
     })
@@ -507,8 +516,8 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
                     <td style={td}>
                       {!sec.includes('math')
                         ? <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>N/A</span>
-                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(s.math_score_pct || 0), fontWeight: 700 }}>
-                            {s.math_score_pct || 0}%
+                        : <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(mathScorePct(s)), fontWeight: 700 }}>
+                            {mathScorePct(s)}%
                           </span>
                       }
                     </td>

@@ -82,6 +82,14 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Always recompute math_score_pct from raw/total when both are available —
+  // stored pct can be stale/inconsistent from older code versions.
+  const mathRaw   = sub.math_score_raw   as number | null
+  const mathTotal = sub.math_score_total as number | null
+  const mathPct   = (mathRaw != null && mathTotal != null && mathTotal > 0)
+    ? Math.round((mathRaw / mathTotal) * 100)
+    : (mathPct)
+
   const overall        = sub.overall_score_pct || 0
   const overallColor   = scoreColor(overall)
   const rpScore        = (sub as any).roleplay_score as number | null
@@ -224,11 +232,11 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               <span style={{
                 fontFamily: 'Space Mono, monospace', fontSize: 11, fontWeight: 700,
                 padding: '4px 12px', borderRadius: 100,
-                background: `${scoreColor(sub.math_score_pct || 0)}18`,
-                border: `1px solid ${scoreColor(sub.math_score_pct || 0)}40`,
-                color: scoreColor(sub.math_score_pct || 0),
+                background: `${scoreColor(mathPct)}18`,
+                border: `1px solid ${scoreColor(mathPct)}40`,
+                color: scoreColor(mathPct),
               }}>
-                {sub.math_score_pct || 0}%
+                {mathPct}%
               </span>
             </div>
 
@@ -238,14 +246,14 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
                 fontFamily: 'Fraunces, serif',
                 fontSize: 52,
                 fontWeight: 700,
-                color: scoreColor(sub.math_score_pct || 0),
+                color: scoreColor(mathPct),
                 lineHeight: 1,
               }}>
                 {sub.math_score_raw ?? 0}
                 <span style={{ fontSize: 24, color: 'var(--muted)', fontWeight: 400 }}>/{sub.math_score_total ?? '?'}</span>
               </div>
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-                puntos · {sub.math_score_pct || 0}%
+                puntos · {mathPct}%
               </div>
             </div>
 
@@ -281,8 +289,8 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '12px 0', marginBottom: 16 }}>
-                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 32, fontWeight: 700, color: scoreColor(sub.math_score_pct || 0) }}>
-                  {sub.math_score_pct || 0}%
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 32, fontWeight: 700, color: scoreColor(mathPct) }}>
+                  {mathPct}%
                 </div>
               </div>
             )}
