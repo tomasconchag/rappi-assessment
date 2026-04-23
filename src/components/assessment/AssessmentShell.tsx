@@ -1109,6 +1109,39 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
       {state.screen === 'completion' && (
         <CompletionScreen name={state.candidate.name} submitting={state.submitting} error={state.submitError} confirmationCode={state.confirmationCode} />
       )}
+
+      {/* ── Support contact footer — shown only on informational / prep screens ── */}
+      {[
+        'context',
+        'shark_intro', 'shark_prep', 'shark_done',
+        'roleplay_intro', 'roleplay_prep', 'roleplay_done',
+        'caso_intro',
+        'math_intro',
+        'cultural_fit_intro', 'cultural_fit_prep', 'cultural_fit_done',
+        'completion',
+      ].includes(state.screen) && (
+        <div style={{
+          marginTop: 48, paddingTop: 16,
+          borderTop: '1px solid var(--border)',
+          textAlign: 'center',
+        }}>
+          <p style={{
+            fontSize: 11.5,
+            fontFamily: 'Inter, DM Sans, sans-serif',
+            color: 'var(--muted)',
+            margin: 0,
+            lineHeight: 1.6,
+          }}>
+            ¿Tienes problemas técnicos? Escríbenos a{' '}
+            <a
+              href="mailto:tomas.giraldo@rappi.com"
+              style={{ color: 'var(--dim)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+            >
+              tomas.giraldo@rappi.com
+            </a>
+          </p>
+        </div>
+      )}
     </>
   )
 }

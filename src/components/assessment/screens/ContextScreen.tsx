@@ -261,6 +261,29 @@ export function ContextScreen({ name, onStart, enabledSections }: Props) {
 
       </div>
 
+      {/* Support note */}
+      <div className="anim3" style={{
+        textAlign: 'center',
+        padding: '12px 20px',
+        background: 'rgba(255,255,255,.03)',
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        marginBottom: 8,
+      }}>
+        <p style={{
+          fontSize: 12, margin: 0,
+          color: 'var(--muted)',
+          fontFamily: 'Inter, DM Sans, sans-serif',
+          lineHeight: 1.6,
+        }}>
+          ¿Tienes algún problema técnico antes o durante el assessment?{' '}
+          Escríbenos a{' '}
+          <a href="mailto:tomas.giraldo@rappi.com" style={{ color: 'var(--dim)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+            tomas.giraldo@rappi.com
+          </a>
+        </p>
+      </div>
+
       {/* CTA */}
       <div className="anim3" style={{ display: 'flex', justifyContent: 'center' }}>
         <Button variant="red" onClick={onStart}>
