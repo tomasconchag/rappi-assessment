@@ -90,8 +90,9 @@ export function CulturalFitEvalSection({
   const [showTranscript, setShowTranscript] = useState(false)
   const [expandedDim,   setExpandedDim]   = useState<string | null>(null)
 
+  // Auto-trigger only when video exists but NO previous evaluation AND score is null (not 0)
   useEffect(() => {
-    if (culturalFitVideoPath && !initialEvaluation && !initialScore) {
+    if (culturalFitVideoPath && initialEvaluation === null && initialScore === null) {
       handleEvaluate()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,14 +105,15 @@ export function CulturalFitEvalSection({
       const res = await fetch('/api/evaluate-cultural-fit', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ submissionId }),
+        body: JSON.stringify({ submissionId, force: true }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Error al evaluar')
+      if (!data.evaluation) throw new Error('La API no devolvió una evaluación válida')
       setEvaluation(data.evaluation)
-      setScore(data.evaluation.total)
-      setBand(data.evaluation.band)
-      setTranscript(data.transcript)
+      setScore(data.evaluation.total ?? null)
+      setBand(data.evaluation.band ?? null)
+      setTranscript(data.transcript ?? null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
