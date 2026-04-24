@@ -92,7 +92,8 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
 
   const overall        = sub.overall_score_pct || 0
   const overallColor   = scoreColor(overall)
-  const rpScore        = (sub as any).roleplay_score as number | null
+  const rpScoreRaw     = (sub as any).roleplay_score as number | null          // raw pts out of 87
+  const rpScore        = rpScoreRaw != null ? Math.round((rpScoreRaw / 87) * 100) : null  // normalized 0-100
   const rpBand         = (sub as any).roleplay_band as string | null
   const rpTranscript   = (sub as any).roleplay_transcript as string | null
   const cfScore        = (sub as any).cultural_fit_score as number | null
@@ -371,10 +372,10 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
                 border: `1px solid ${scoreColor(rpScore)}30`,
               }}>
                 <div style={{ fontFamily: 'Fraunces, serif', fontSize: 48, fontWeight: 700, color: scoreColor(rpScore), lineHeight: 1 }}>
-                  {rpScore}
+                  {rpScore}%
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>/ 87 pts</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>{rpScoreRaw} / 87 pts</div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, fontWeight: 700, color: scoreColor(rpScore), textTransform: 'uppercase', letterSpacing: '1px' }}>
                     {rpBand}
                   </div>
