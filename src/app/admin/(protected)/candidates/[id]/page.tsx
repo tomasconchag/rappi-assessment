@@ -10,6 +10,9 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const { id } = await params
   const supabase = createAdminClient()
 
+  // NOTE: keep select('*') — the math score recomputation below relies on
+  // math_score_raw and math_score_total being present. If this is ever
+  // changed to an explicit field list, those two fields MUST be included.
   const { data: sub } = await supabase
     .from('submissions')
     .select(`
