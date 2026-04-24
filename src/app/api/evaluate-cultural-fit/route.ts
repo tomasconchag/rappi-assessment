@@ -145,8 +145,8 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
   const { id, error: submitError } = await submitRes.json()
   if (submitError) throw new Error(`AssemblyAI submit error: ${submitError}`)
 
-  for (let i = 0; i < 80; i++) {  // 80 × 3s = 240s max — fits within 300s Vercel Hobby limit
-    await new Promise(r => setTimeout(r, 3000))
+  for (let i = 0; i < 80; i++) {  // 80 × 2s = 160s max — leaves ~140s buffer for Claude within 300s limit
+    await new Promise(r => setTimeout(r, 2000))
     const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
       headers: { authorization: apiKey },
     })
