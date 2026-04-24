@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { RolePlayEvalSection } from './RolePlayEvalSection'
 import { CulturalFitEvalSection } from './CulturalFitEvalSection'
 import { CandidateActions } from './CandidateActions'
-import type { SectionId } from '@/lib/challenges'
+import { normalizedWeights, type SectionId } from '@/lib/challenges'
 
 export default async function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -93,8 +93,6 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
     ? Math.round((mathRaw / mathTotal) * 100)
     : (sub.math_score_pct || 0)
 
-  const overall        = sub.overall_score_pct || 0
-  const overallColor   = scoreColor(overall)
   const rpScoreRaw     = (sub as any).roleplay_score as number | null          // raw pts out of 87
   const rpScore        = rpScoreRaw != null ? Math.round((rpScoreRaw / 87) * 100) : null  // normalized 0-100
   const rpBand         = (sub as any).roleplay_band as string | null
@@ -104,6 +102,21 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
   const cfEvaluation   = (sub as any).cultural_fit_evaluation ?? null
   const cfTranscript   = (sub as any).cultural_fit_transcript as string | null
   const cfCompleted    = !!(sub as any).cultural_fit_completed
+  // Recalculate overall — same logic as CandidatesTable.computeOverall — so the header
+  // always shows a fresh weighted average, never a stale value stored in the DB.
+  const _weights    = normalizedWeights(enabledSections, (sub as any).challenge_weights ?? undefined)
+  const _scored: { id: SectionId; score: number }[] = []
+  if (enabledSections.includes('math')         && (sub.math_score_pct != null || mathRaw != null))  _scored.push({ id: 'math',         score: mathPct })
+  if (enabledSections.includes('caso')         && sub.caso_score_pct  != null)                      _scored.push({ id: 'caso',         score: sub.caso_score_pct as number })
+  if (enabledSections.includes('roleplay')     && rpScore             != null)                      _scored.push({ id: 'roleplay',     score: rpScore })
+  if (enabledSections.includes('roleplay')     && sub.roleplay_completed && rpScore == null)        _scored.push({ id: 'roleplay',     score: 0 })
+  if (enabledSections.includes('cultural_fit') && cfScore             != null)                      _scored.push({ id: 'cultural_fit', score: cfScore })
+  if (enabledSections.includes('cultural_fit') && cfCompleted         && cfScore == null)           _scored.push({ id: 'cultural_fit', score: 0 })
+  const _wTotal  = enabledSections.reduce((sum, id) => sum + (_weights[id] ?? 0), 0)
+  const overall  = _scored.length > 0 && _wTotal > 0
+    ? Math.round(_scored.reduce((sum, { id, score }) => sum + score * (_weights[id] ?? 0), 0) / _wTotal)
+    : (sub.overall_score_pct || 0)
+  const overallColor   = scoreColor(overall)
   const mathTimeSecs   = (sub as any).math_time_secs as number | null
   const mathTimeStr    = mathTimeSecs != null
     ? `${Math.floor(mathTimeSecs / 60)}m ${mathTimeSecs % 60}s`
