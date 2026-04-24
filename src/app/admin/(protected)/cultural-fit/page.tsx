@@ -19,7 +19,7 @@ export default function CulturalFitPage() {
           Cultural Fit
         </h1>
         <p style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'DM Sans, sans-serif' }}>
-          Prueba la entrevista con Simón y verifica exactamente lo que ven los candidatos.
+          Prueba la entrevista con Felipe y verifica exactamente lo que ven los candidatos.
         </p>
       </div>
 
@@ -31,10 +31,10 @@ export default function CulturalFitPage() {
         {/* Info card */}
         <div style={{ ...card, borderTop: '3px solid rgba(168,85,247,.4)' }}>
           <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: '#a855f7', marginBottom: 12 }}>
-            Cultural Fit · Simón
+            Cultural Fit · Felipe
           </div>
           <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.7, margin: '0 0 16px' }}>
-            Entrevista de 5 minutos con Simón, Team Lead de Brand Development. El agente hace preguntas sobre gestión de conflictos, fit cultural, adaptabilidad, dinámica de equipo y gestión de feedback.
+            Entrevista de 5 minutos con Felipe, Team Lead de Brand Development. El agente hace preguntas sobre gestión de conflictos, fit cultural, adaptabilidad, dinámica de equipo y gestión de feedback.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {[

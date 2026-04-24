@@ -174,7 +174,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
         if (next === 60 && !warned60Ref.current) {
           warned60Ref.current = true
           playBeep(800, 0.15, 2)
-          // Notify Simón to start wrapping up the interview naturally
+          // Notify Felipe to start wrapping up the interview naturally
           if (vapiRef.current) {
             try {
               vapiRef.current.send({
@@ -288,7 +288,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
               boxShadow: '0 4px 20px rgba(168,85,247,.4)',
               position: 'relative',
             }}>
-              S
+              F
               {/* Speaking indicator */}
               {agentSpeaking && (
                 <div style={{
@@ -301,7 +301,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
 
             {/* Name & status */}
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Simón</div>
+              <div style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Felipe</div>
               <div style={{ fontFamily: 'DM Sans', fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>Team Lead · Brand Development</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, animation: callStatus === 'active' ? 'rec-pulse 2s ease-in-out infinite' : 'none' }} />
@@ -433,10 +433,10 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
               Cultural Fit Interview
             </div>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
-              Entrevista con Simón
+              Entrevista con Felipe
             </h3>
             <p style={{ fontSize: 13, color: 'var(--dim)', lineHeight: 1.7, fontFamily: 'DM Sans' }}>
-              Simón te hará preguntas sobre tu experiencia, valores y forma de trabajar. Responde con naturalidad y ejemplos concretos.
+              Felipe te hará preguntas sobre tu experiencia, valores y forma de trabajar. Responde con naturalidad y ejemplos concretos.
             </p>
           </div>
 
@@ -444,7 +444,7 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
               { icon: '🎯', title: 'Sé específico', desc: 'Usa ejemplos reales de situaciones que hayas vivido en trabajos anteriores o en tu vida.' },
-              { icon: '💬', title: 'Escucha activamente', desc: 'Si Simón hace una pregunta de seguimiento, es para profundizar — tómate el tiempo de responder bien.' },
+              { icon: '💬', title: 'Escucha activamente', desc: 'Si Felipe hace una pregunta de seguimiento, es para profundizar — tómate el tiempo de responder bien.' },
               { icon: '🧠', title: 'Muestra tu forma de pensar', desc: 'No solo el resultado, sino cómo razonaste y qué aprendiste en el proceso.' },
               { icon: '⚡', title: 'Sé auténtico', desc: 'No hay respuestas perfectas. El equipo valora la honestidad y la autoconciencia.' },
             ].map(item => (

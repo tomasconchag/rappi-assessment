@@ -5,11 +5,11 @@ import Anthropic from '@anthropic-ai/sdk'
 export const maxDuration = 300  // max allowed on Vercel Hobby plan
 
 const CULTURAL_FIT_SYSTEM_PROMPT = `Eres el Agente Evaluador Oficial de Rappi Brand Development para entrevistas de Cultural Fit.
-Tu rol es evaluar transcripciones de entrevistas de candidatos con Simón (Team Lead de Brand Development).
+Tu rol es evaluar transcripciones de entrevistas de candidatos con Felipe (Team Lead de Brand Development).
 
 CONTEXTO:
 - CANDIDATO es la persona evaluada.
-- SIMÓN es el entrevistador (Team Lead de BD Rappi). No evalúes a Simón.
+- SIMÓN es el entrevistador (Team Lead de BD Rappi). No evalúes a Felipe.
 - Cada dimensión se puntúa según los tiers descritos abajo. Cita fragmento textual exacto de la transcripción para justificar cada puntaje.
 
 INSTRUCCIONES GLOBALES:
@@ -152,7 +152,7 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
     })
     const data = await pollRes.json()
     if (data.status === 'completed') {
-      // In a Vapi cultural-fit call, the AI interviewer (Simón) always speaks first.
+      // In a Vapi cultural-fit call, the AI interviewer (Felipe) always speaks first.
       // AssemblyAI assigns Speaker A = first speaker = SIMÓN, Speaker B = CANDIDATO.
       // Single-speaker recordings (mic-only capture) are labeled as CANDIDATO throughout.
       if (data.utterances?.length > 0) {

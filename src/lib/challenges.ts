@@ -56,7 +56,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     id: 'cultural_fit',
     label: 'Cultural Fit',
     icon: '🎙',
-    description: 'Entrevista de 5 minutos con Simón, Team Lead de Brand Development. Evalúa fit cultural con el equipo Rappi BD. Se graba pantalla, cámara y micrófono.',
+    description: 'Entrevista de 5 minutos con Felipe, Team Lead de Brand Development. Evalúa fit cultural con el equipo Rappi BD. Se graba pantalla, cámara y micrófono.',
     color: '#a855f7',
     colorBg: 'rgba(168,85,247,.06)',
     colorBorder: 'rgba(168,85,247,.2)',

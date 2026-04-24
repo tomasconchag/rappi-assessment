@@ -69,7 +69,7 @@ const ALL_SECTIONS: Record<string, { icon: string; title: string; desc: string; 
     meta: '~8 min · 25%', color: 'var(--teal)', glow: 'rgba(0,196,158,.1)', border: 'rgba(0,196,158,.18)',
   },
   cultural_fit: {
-    icon: '🎙', title: 'Cultural Fit', desc: 'Entrevista de 5 min con Simón, Team Lead de Brand Development. Se graba pantalla, cámara y micrófono.',
+    icon: '🎙', title: 'Cultural Fit', desc: 'Entrevista de 5 min con Felipe, Team Lead de Brand Development. Se graba pantalla, cámara y micrófono.',
     meta: '~5 min', color: '#a855f7', glow: 'rgba(168,85,247,.1)', border: 'rgba(168,85,247,.18)',
   },
 }

@@ -329,7 +329,7 @@ export function CulturalFitEvalSection({
       {/* Transcript viewer */}
       {showTranscript && transcript && (
         <div style={{ marginTop: 20, padding: '16px 20px', borderRadius: 12, background: 'rgba(255,255,255,.02)', border: '1px solid var(--border)', maxHeight: 400, overflowY: 'auto' }}>
-          <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>Transcripción — Entrevista con Simón</div>
+          <div style={{ fontSize: 11, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 12 }}>Transcripción — Entrevista con Felipe</div>
           <pre style={{ fontSize: 12, fontFamily: 'DM Sans, sans-serif', color: 'var(--dim)', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
             {transcript}
           </pre>

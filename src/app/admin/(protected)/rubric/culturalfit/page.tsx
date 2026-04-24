@@ -17,7 +17,7 @@ export default async function RubricCulturalFitPage() {
           Evaluación IA · Rúbrica
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, lineHeight: 1, marginBottom: 8 }}>
-          🎙 Cultural Fit — Entrevista con Simón
+          🎙 Cultural Fit — Entrevista con Felipe
         </h1>
         <p style={{ fontSize: 14, color: 'var(--muted)', fontFamily: 'DM Sans', maxWidth: 600 }}>
           Framework de Evaluación Conductual v1.0 · 5 dimensiones × 20 pts = 100 pts totales. Edita los criterios y preguntas que usa la IA.

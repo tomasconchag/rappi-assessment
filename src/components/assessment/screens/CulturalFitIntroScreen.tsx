@@ -5,14 +5,14 @@ interface Props {
 }
 
 const whatItems = [
-  'Habla en voz alta — Simón te escucha y te responde con voz. Es igual que una llamada de teléfono, no hay nada que escribir.',
-  'Simón es un avatar de IA (no es una persona real). Simula ser el Team Lead de Brand Development y te hará preguntas sobre tu forma de trabajar y tus valores.',
+  'Habla en voz alta — Felipe te escucha y te responde con voz. Es igual que una llamada de teléfono, no hay nada que escribir.',
+  'Felipe es un avatar de IA (no es una persona real). Simula ser el Team Lead de Brand Development y te hará preguntas sobre tu forma de trabajar y tus valores.',
   'La entrevista dura 5 minutos — responde con honestidad y naturalidad, como lo harías con un entrevistador real.',
 ]
 
 const tips = [
   { emoji: '🎯', text: 'Sé concreto — da ejemplos reales de situaciones que hayas vivido.' },
-  { emoji: '💬', text: 'Habla en voz alta y claro — Simón escucha y responde en tiempo real.' },
+  { emoji: '💬', text: 'Habla en voz alta y claro — Felipe escucha y responde en tiempo real.' },
   { emoji: '🧠', text: 'No hay respuestas correctas o incorrectas — buscamos autenticidad.' },
   { emoji: '⏱', text: 'Gestiona tu tiempo — tienes 5 minutos para la entrevista completa.' },
 ]
@@ -50,7 +50,7 @@ export function CulturalFitIntroScreen({ onStart }: Props) {
           letterSpacing: '-.5px',
           color: 'var(--text)',
         }}>
-          Entrevista con Simón
+          Entrevista con Felipe
         </h2>
         {/* AI badge */}
         <div style={{
@@ -70,7 +70,7 @@ export function CulturalFitIntroScreen({ onStart }: Props) {
           marginBottom: 0,
           fontFamily: 'DM Sans, sans-serif',
         }}>
-          Esta es la última etapa del proceso. Vas a tener una conversación de voz con <strong style={{ color: 'var(--text)' }}>Simón</strong>, un avatar de IA que simula ser el Team Lead de Brand Development. <strong style={{ color: 'var(--text)' }}>No hay una persona real al otro lado</strong> — habla con normalidad, como si fuera una llamada.
+          Esta es la última etapa del proceso. Vas a tener una conversación de voz con <strong style={{ color: 'var(--text)' }}>Felipe</strong>, un avatar de IA que simula ser el Team Lead de Brand Development. <strong style={{ color: 'var(--text)' }}>No hay una persona real al otro lado</strong> — habla con normalidad, como si fuera una llamada.
         </p>
       </div>
 

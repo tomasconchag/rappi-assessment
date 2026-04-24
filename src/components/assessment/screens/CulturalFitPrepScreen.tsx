@@ -326,7 +326,7 @@ export function CulturalFitPrepScreen({ onReady }: Props) {
               Todo listo — grabación activa
             </h2>
             <p style={{ fontSize: 14, color: 'var(--dim)', marginBottom: 16, lineHeight: 1.7, fontFamily: 'DM Sans' }}>
-              La entrevista con <strong style={{ color: 'var(--text)' }}>Simón</strong> comenzará automáticamente cuando expire el temporizador, o puedes iniciarla ahora.
+              La entrevista con <strong style={{ color: 'var(--text)' }}>Felipe</strong> comenzará automáticamente cuando expire el temporizador, o puedes iniciarla ahora.
             </p>
             <div style={{ display: 'flex', gap: 20, justifyContent: 'center', flexWrap: 'wrap', marginTop: 24 }}>
               {[

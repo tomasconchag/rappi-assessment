@@ -59,7 +59,7 @@ export function CulturalFitDoneScreen({ onNext }: Props) {
         maxWidth: 440,
         margin: '0 auto 12px',
       }}>
-        Tu conversación con <strong style={{ color: 'var(--text)' }}>Simón</strong> ha concluido. El equipo de Rappi Brand Development revisará tu fit cultural con el equipo.
+        Tu conversación con <strong style={{ color: 'var(--text)' }}>Felipe</strong> ha concluido. El equipo de Rappi Brand Development revisará tu fit cultural con el equipo.
       </p>
 
       <p style={{

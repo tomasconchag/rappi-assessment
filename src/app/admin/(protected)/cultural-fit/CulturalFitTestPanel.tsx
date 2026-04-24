@@ -24,7 +24,7 @@ export function CulturalFitTestPanel() {
     }}>
       <div>
         <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, marginBottom: 4 }}>
-          Probar entrevista con Simón
+          Probar entrevista con Felipe
         </div>
         <p style={{ fontSize: 13, color: 'var(--dim)', fontFamily: 'DM Sans, sans-serif', lineHeight: 1.5, margin: 0 }}>
           Inicia una sesión de Cultural Fit exactamente como la verá el candidato.
