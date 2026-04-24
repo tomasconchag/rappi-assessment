@@ -20,7 +20,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     color: 'var(--red)',
     colorBg: 'rgba(233,69,96,.06)',
     colorBorder: 'rgba(233,69,96,.2)',
-    weight: 35,
+    weight: 0,
   },
   {
     id: 'roleplay',
@@ -30,7 +30,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     color: '#f59e0b',
     colorBg: 'rgba(245,158,11,.06)',
     colorBorder: 'rgba(245,158,11,.2)',
-    weight: 35,
+    weight: 45,
   },
   {
     id: 'caso',
@@ -40,7 +40,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     color: 'var(--blue)',
     colorBg: 'rgba(67,97,238,.06)',
     colorBorder: 'rgba(67,97,238,.2)',
-    weight: 40,
+    weight: 0,
   },
   {
     id: 'math',
@@ -60,7 +60,7 @@ export const CHALLENGES: ChallengeDefinition[] = [
     color: '#a855f7',
     colorBg: 'rgba(168,85,247,.06)',
     colorBorder: 'rgba(168,85,247,.2)',
-    weight: 0,
+    weight: 30,
   },
 ]
 
@@ -82,9 +82,9 @@ export function normalizedWeights(
 
 /** Default base weights keyed by section id */
 export const DEFAULT_WEIGHTS: Record<SectionId, number> = {
-  sharktank:    35,
-  roleplay:     35,
-  caso:         40,
+  sharktank:     0,
+  roleplay:     45,
+  caso:          0,
   math:         25,
-  cultural_fit:  0,
+  cultural_fit: 30,
 }
