@@ -174,6 +174,18 @@ export function CulturalFitCallScreen({ onDone, cameraStream }: Props) {
         if (next === 60 && !warned60Ref.current) {
           warned60Ref.current = true
           playBeep(800, 0.15, 2)
+          // Notify Simón to start wrapping up the interview naturally
+          if (vapiRef.current) {
+            try {
+              vapiRef.current.send({
+                type: 'add-message',
+                message: {
+                  role: 'system',
+                  content: '[SISTEMA] CIERRA LA ENTREVISTA. Tienes 60 segundos. Haz una última pregunta breve o despídete de forma cálida YA.',
+                },
+              })
+            } catch { /* ignore — non-critical */ }
+          }
         }
         if (next <= 0) { clearInterval(interval); finalize(); return 0 }
         return next

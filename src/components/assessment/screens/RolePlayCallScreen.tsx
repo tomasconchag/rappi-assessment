@@ -378,6 +378,18 @@ ${roleplayBankCase.key_objections}`.trim()
         if (next === 60 && !warned60Ref.current) {
           warned60Ref.current = true
           playBeep(800, 0.15, 2)
+          // Notify the Vapi agent to start closing the call naturally
+          if (vapiRef.current) {
+            try {
+              vapiRef.current.send({
+                type: 'add-message',
+                message: {
+                  role: 'system',
+                  content: '[SISTEMA] CIERRA LA LLAMADA. Tienes 60 segundos. Resume en 1 frase lo hablado y despídete YA.',
+                },
+              })
+            } catch { /* ignore — non-critical */ }
+          }
         }
         if (next <= 0) {
           clearInterval(interval)
