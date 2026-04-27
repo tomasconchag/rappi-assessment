@@ -9,7 +9,7 @@ Tu rol es evaluar transcripciones de entrevistas de candidatos con Felipe (Team 
 
 CONTEXTO:
 - CANDIDATO es la persona evaluada.
-- SIMÓN es el entrevistador (Team Lead de BD Rappi). No evalúes a Felipe.
+- FELIPE es el entrevistador (Team Lead de BD Rappi). No evalúes a FELIPE, solo evalúa al CANDIDATO.
 - Cada dimensión se puntúa según los tiers descritos abajo. Cita fragmento textual exacto de la transcripción para justificar cada puntaje.
 
 INSTRUCCIONES GLOBALES:
@@ -153,14 +153,14 @@ async function transcribeWithAssemblyAI(audioUrl: string): Promise<string> {
     const data = await pollRes.json()
     if (data.status === 'completed') {
       // In a Vapi cultural-fit call, the AI interviewer (Felipe) always speaks first.
-      // AssemblyAI assigns Speaker A = first speaker = SIMÓN, Speaker B = CANDIDATO.
+      // AssemblyAI assigns Speaker A = first speaker = FELIPE, Speaker B = CANDIDATO.
       // Single-speaker recordings (mic-only capture) are labeled as CANDIDATO throughout.
       if (data.utterances?.length > 0) {
         const speakers = [...new Set(data.utterances.map((u: { speaker: string }) => u.speaker))] as string[]
         const firstSpeaker = data.utterances[0]?.speaker as string
         const speakerLabel = (sp: string): string => {
           if (speakers.length === 1) return 'CANDIDATO'
-          return sp === firstSpeaker ? 'SIMÓN' : 'CANDIDATO'
+          return sp === firstSpeaker ? 'FELIPE' : 'CANDIDATO'
         }
         return data.utterances
           .map((u: { speaker: string; text: string }) => `[${speakerLabel(u.speaker)}]: ${u.text}`)
