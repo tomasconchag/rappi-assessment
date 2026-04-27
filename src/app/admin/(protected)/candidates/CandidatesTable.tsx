@@ -283,6 +283,15 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
   ]
   const bandColors: Record<string, string> = { 'TOP TALENT': '#06d68a', 'STRONG FIT': '#4361ee', 'POTENTIAL RISK': '#f59e0b', 'NOT A FIT': '#e03554' }
 
+  // Cohorts that have at least one submission — used to populate dropdown
+  const cohortIdsWithSubmissions = new Set(
+    submissions.flatMap(s => {
+      const email = (Array.isArray(s.candidates) ? s.candidates[0] : s.candidates)?.email
+      return email ? (cohortMemberMap[email] ?? []) : []
+    })
+  )
+  const visibleCohorts = cohorts.filter(c => cohortIdsWithSubmissions.has(c.id))
+
   const th: React.CSSProperties = {
     padding: '11px 16px',
     textAlign: 'left',
@@ -385,57 +394,6 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
       )}
 
       {/* ── COHORT PICKER ───────────────────────────────────────────────── */}
-      {cohorts.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{
-            fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase',
-            letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10,
-          }}>
-            🎓 Cohorte
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {/* "Todas" pill */}
-            <button
-              onClick={() => handleFilterChange(() => setCohortFilter('all'))}
-              style={{
-                padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
-                fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
-                border: `1px solid ${cohortFilter === 'all' ? 'rgba(67,97,238,.5)' : 'var(--border)'}`,
-                background: cohortFilter === 'all' ? 'rgba(67,97,238,.12)' : 'var(--card)',
-                color: cohortFilter === 'all' ? '#93c5fd' : 'var(--muted)',
-                fontWeight: cohortFilter === 'all' ? 600 : 400,
-                transition: 'all .15s',
-              }}
-            >
-              Todas
-            </button>
-
-            {/* One pill per cohort */}
-            {cohorts.map(coh => {
-              const active = cohortFilter === coh.id
-              return (
-                <button
-                  key={coh.id}
-                  onClick={() => handleFilterChange(() => setCohortFilter(coh.id))}
-                  style={{
-                    padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
-                    fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
-                    border: `1px solid ${active ? 'rgba(168,85,247,.5)' : coh.is_active ? 'rgba(168,85,247,.2)' : 'var(--border)'}`,
-                    background: active ? 'rgba(168,85,247,.12)' : coh.is_active ? 'rgba(168,85,247,.04)' : 'var(--card)',
-                    color: active ? '#a855f7' : coh.is_active ? 'rgba(168,85,247,.8)' : 'var(--muted)',
-                    fontWeight: active ? 700 : 400,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    transition: 'all .15s',
-                  }}
-                >
-                  {coh.is_active && <span style={{ fontSize: 8, background: '#a855f7', borderRadius: '50%', width: 7, height: 7, flexShrink: 0, display: 'inline-block' }} />}
-                  {coh.name}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ── SUMMARY STATS BAR ───────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -673,6 +631,25 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
           <option value="pending">⏳ Pendiente IA</option>
           <option value="evaluated">✅ Evaluados</option>
         </select>
+
+        {/* Cohort filter */}
+        {visibleCohorts.length > 0 && (
+          <select
+            value={cohortFilter}
+            onChange={e => handleFilterChange(() => setCohortFilter(e.target.value))}
+            style={{
+              padding: '8px 12px', borderRadius: 8, fontSize: 12,
+              background: 'var(--card)', border: `1px solid ${cohortFilter !== 'all' ? 'rgba(168,85,247,.4)' : 'var(--border)'}`,
+              color: cohortFilter !== 'all' ? '#a855f7' : 'var(--muted)',
+              fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
+            }}
+          >
+            <option value="all">🎓 Cohorte: Todas</option>
+            {visibleCohorts.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
 
         {/* Date range */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
