@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { normalizedWeights } from '@/lib/challenges'
@@ -167,7 +167,9 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
   const [dateFrom,      setDateFrom]      = useState('')
   const [dateTo,        setDateTo]        = useState('')
   const [pendingFilter, setPendingFilter] = useState<PendingFilter>('all')
-  const [cohortFilter,  setCohortFilter]  = useState<string>('all')
+  const [cohortFilter,  setCohortFilter]  = useState<string[]>([])
+  const [cohortDropOpen, setCohortDropOpen] = useState(false)
+  const cohortDropRef = useRef<HTMLDivElement>(null)
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [newEvals,      setNewEvals]      = useState(0)
 
@@ -203,6 +205,23 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
     return () => { supabase.removeChannel(ch) }
   }, [])
 
+  // Close cohort dropdown when clicking outside
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (cohortDropRef.current && !cohortDropRef.current.contains(e.target as Node)) {
+        setCohortDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [])
+
+  const toggleCohort = (id: string) => {
+    handleFilterChange(() =>
+      setCohortFilter(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    )
+  }
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('desc') }
@@ -229,9 +248,11 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
       if (dateTo  && s.completed_at && s.completed_at > dateTo + 'T23:59:59') return false
       if (pendingFilter === 'pending'   && !hasPendingEval(s)) return false
       if (pendingFilter === 'evaluated' &&  hasPendingEval(s)) return false
-      if (cohortFilter !== 'all') {
+      if (cohortFilter.length > 0) {
         const email = (Array.isArray(s.candidates) ? s.candidates[0] : s.candidates)?.email
-        if (!email || !(cohortMemberMap[email] ?? []).includes(cohortFilter)) return false
+        if (!email) return false
+        const candidateCohorts = cohortMemberMap[email] ?? []
+        if (!cohortFilter.some(id => candidateCohorts.includes(id))) return false
       }
       return true
     })
@@ -632,23 +653,89 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
           <option value="evaluated">✅ Evaluados</option>
         </select>
 
-        {/* Cohort filter */}
+        {/* Cohort multi-select dropdown */}
         {visibleCohorts.length > 0 && (
-          <select
-            value={cohortFilter}
-            onChange={e => handleFilterChange(() => setCohortFilter(e.target.value))}
-            style={{
-              padding: '8px 12px', borderRadius: 8, fontSize: 12,
-              background: 'var(--card)', border: `1px solid ${cohortFilter !== 'all' ? 'rgba(168,85,247,.4)' : 'var(--border)'}`,
-              color: cohortFilter !== 'all' ? '#a855f7' : 'var(--muted)',
-              fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
-            }}
-          >
-            <option value="all">🎓 Cohorte: Todas</option>
-            {visibleCohorts.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div ref={cohortDropRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setCohortDropOpen(v => !v)}
+              style={{
+                padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                background: 'var(--card)',
+                border: `1px solid ${cohortFilter.length > 0 ? 'rgba(168,85,247,.4)' : 'var(--border)'}`,
+                color: cohortFilter.length > 0 ? '#a855f7' : 'var(--muted)',
+                fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              🎓 {cohortFilter.length === 0
+                ? 'Cohorte: Todas'
+                : `${cohortFilter.length} cohorte${cohortFilter.length > 1 ? 's' : ''}`}
+              <span style={{ fontSize: 8, opacity: 0.5, marginLeft: 2 }}>▼</span>
+            </button>
+
+            {cohortDropOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+                background: 'var(--card)', border: '1px solid var(--border)',
+                borderRadius: 10, padding: '6px 0',
+                minWidth: 220, maxHeight: 280, overflowY: 'auto',
+                boxShadow: '0 8px 28px rgba(0,0,0,.45)',
+              }}>
+                {/* Todas */}
+                <button
+                  onClick={() => { handleFilterChange(() => setCohortFilter([])); setCohortDropOpen(false) }}
+                  style={{
+                    width: '100%', padding: '8px 14px', textAlign: 'left',
+                    background: cohortFilter.length === 0 ? 'rgba(168,85,247,.08)' : 'transparent',
+                    border: 'none', cursor: 'pointer', fontSize: 12.5,
+                    fontFamily: 'DM Sans', color: cohortFilter.length === 0 ? '#a855f7' : 'var(--dim)',
+                    display: 'flex', alignItems: 'center', gap: 9,
+                  }}
+                >
+                  <span style={{
+                    width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                    border: `1.5px solid ${cohortFilter.length === 0 ? '#a855f7' : 'var(--border)'}`,
+                    background: cohortFilter.length === 0 ? '#a855f7' : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, color: '#fff',
+                  }}>
+                    {cohortFilter.length === 0 ? '✓' : ''}
+                  </span>
+                  Todas las cohortes
+                </button>
+                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
+                {/* One row per cohort */}
+                {visibleCohorts.map(c => {
+                  const checked = cohortFilter.includes(c.id)
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => toggleCohort(c.id)}
+                      style={{
+                        width: '100%', padding: '7px 14px', textAlign: 'left',
+                        background: checked ? 'rgba(168,85,247,.06)' : 'transparent',
+                        border: 'none', cursor: 'pointer', fontSize: 12.5,
+                        fontFamily: 'DM Sans', color: checked ? '#a855f7' : 'var(--dim)',
+                        display: 'flex', alignItems: 'center', gap: 9,
+                      }}
+                    >
+                      <span style={{
+                        width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                        border: `1.5px solid ${checked ? '#a855f7' : 'var(--border)'}`,
+                        background: checked ? '#a855f7' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 9, color: '#fff',
+                      }}>
+                        {checked ? '✓' : ''}
+                      </span>
+                      {c.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Date range */}
@@ -680,9 +767,9 @@ export function CandidatesTable({ submissions, totalCount, configs = [], cohorts
         </div>
 
         {/* Clear filters */}
-        {(fraudFilter !== 'all' || minScore || configFilter !== 'all' || cfBandFilter !== 'all' || dateFrom || dateTo || pendingFilter !== 'all' || cohortFilter !== 'all') && (
+        {(fraudFilter !== 'all' || minScore || configFilter !== 'all' || cfBandFilter !== 'all' || dateFrom || dateTo || pendingFilter !== 'all' || cohortFilter.length > 0) && (
           <button
-            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setCfBandFilter('all'); setDateFrom(''); setDateTo(''); setPendingFilter('all'); setCohortFilter('all'); setPage(0) }}
+            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setCfBandFilter('all'); setDateFrom(''); setDateTo(''); setPendingFilter('all'); setCohortFilter([]); setPage(0) }}
             style={{
               padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
               background: 'transparent', border: '1px solid var(--border)',
