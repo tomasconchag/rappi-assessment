@@ -34,6 +34,12 @@ interface AssessmentConfig {
   is_active: boolean
 }
 
+interface Cohort {
+  id: string
+  name: string
+  is_active: boolean
+}
+
 const fraudStyle = (level: string) => {
   if (level === 'Confiable')    return { color: 'var(--teal)', bg: 'rgba(6,214,160,.08)',  border: 'rgba(6,214,160,.2)',  dot: 'var(--teal)' }
   if (level === 'Riesgo Medio') return { color: 'var(--gold)', bg: 'rgba(244,162,97,.08)', border: 'rgba(244,162,97,.2)', dot: 'var(--gold)' }
@@ -136,7 +142,13 @@ type PendingFilter = 'all' | 'pending' | 'evaluated'
 
 const PAGE_SIZE = 50
 
-export function CandidatesTable({ submissions, totalCount, configs = [] }: { submissions: Submission[]; totalCount?: number; configs?: AssessmentConfig[] }) {
+export function CandidatesTable({ submissions, totalCount, configs = [], cohorts = [], cohortMemberMap = {} }: {
+  submissions: Submission[]
+  totalCount?: number
+  configs?: AssessmentConfig[]
+  cohorts?: Cohort[]
+  cohortMemberMap?: Record<string, string[]>
+}) {
   const router = useRouter()
 
   // Default to the first active config, so the list is pre-filtered by test
@@ -155,6 +167,7 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
   const [dateFrom,      setDateFrom]      = useState('')
   const [dateTo,        setDateTo]        = useState('')
   const [pendingFilter, setPendingFilter] = useState<PendingFilter>('all')
+  const [cohortFilter,  setCohortFilter]  = useState<string>('all')
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [newEvals,      setNewEvals]      = useState(0)
 
@@ -216,6 +229,10 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
       if (dateTo  && s.completed_at && s.completed_at > dateTo + 'T23:59:59') return false
       if (pendingFilter === 'pending'   && !hasPendingEval(s)) return false
       if (pendingFilter === 'evaluated' &&  hasPendingEval(s)) return false
+      if (cohortFilter !== 'all') {
+        const email = (Array.isArray(s.candidates) ? s.candidates[0] : s.candidates)?.email
+        if (!email || !(cohortMemberMap[email] ?? []).includes(cohortFilter)) return false
+      }
       return true
     })
     .sort((a, b) => {
@@ -360,6 +377,59 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
                   {cfg.is_active && <span style={{ fontSize: 8, background: 'var(--green)', borderRadius: '50%', width: 7, height: 7, flexShrink: 0, display: 'inline-block' }} />}
                   {cfg.label}
                   <span style={{ fontSize: 11, opacity: .7, fontFamily: 'Space Mono, monospace' }}>({count})</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── COHORT PICKER ───────────────────────────────────────────────── */}
+      {cohorts.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase',
+            letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 10,
+          }}>
+            🎓 Cohorte
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* "Todas" pill */}
+            <button
+              onClick={() => handleFilterChange(() => setCohortFilter('all'))}
+              style={{
+                padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
+                fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                border: `1px solid ${cohortFilter === 'all' ? 'rgba(67,97,238,.5)' : 'var(--border)'}`,
+                background: cohortFilter === 'all' ? 'rgba(67,97,238,.12)' : 'var(--card)',
+                color: cohortFilter === 'all' ? '#93c5fd' : 'var(--muted)',
+                fontWeight: cohortFilter === 'all' ? 600 : 400,
+                transition: 'all .15s',
+              }}
+            >
+              Todas
+            </button>
+
+            {/* One pill per cohort */}
+            {cohorts.map(coh => {
+              const active = cohortFilter === coh.id
+              return (
+                <button
+                  key={coh.id}
+                  onClick={() => handleFilterChange(() => setCohortFilter(coh.id))}
+                  style={{
+                    padding: '8px 16px', borderRadius: 100, fontSize: 12.5,
+                    fontFamily: 'DM Sans, sans-serif', cursor: 'pointer',
+                    border: `1px solid ${active ? 'rgba(168,85,247,.5)' : coh.is_active ? 'rgba(168,85,247,.2)' : 'var(--border)'}`,
+                    background: active ? 'rgba(168,85,247,.12)' : coh.is_active ? 'rgba(168,85,247,.04)' : 'var(--card)',
+                    color: active ? '#a855f7' : coh.is_active ? 'rgba(168,85,247,.8)' : 'var(--muted)',
+                    fontWeight: active ? 700 : 400,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    transition: 'all .15s',
+                  }}
+                >
+                  {coh.is_active && <span style={{ fontSize: 8, background: '#a855f7', borderRadius: '50%', width: 7, height: 7, flexShrink: 0, display: 'inline-block' }} />}
+                  {coh.name}
                 </button>
               )
             })}
@@ -633,9 +703,9 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
         </div>
 
         {/* Clear filters */}
-        {(fraudFilter !== 'all' || minScore || configFilter !== 'all' || cfBandFilter !== 'all' || dateFrom || dateTo || pendingFilter !== 'all') && (
+        {(fraudFilter !== 'all' || minScore || configFilter !== 'all' || cfBandFilter !== 'all' || dateFrom || dateTo || pendingFilter !== 'all' || cohortFilter !== 'all') && (
           <button
-            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setCfBandFilter('all'); setDateFrom(''); setDateTo(''); setPendingFilter('all'); setPage(0) }}
+            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setCfBandFilter('all'); setDateFrom(''); setDateTo(''); setPendingFilter('all'); setCohortFilter('all'); setPage(0) }}
             style={{
               padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
               background: 'transparent', border: '1px solid var(--border)',

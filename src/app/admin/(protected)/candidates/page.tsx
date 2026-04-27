@@ -4,7 +4,7 @@ import { CandidatesTable } from './CandidatesTable'
 export default async function CandidatesPage() {
   const supabase = createAdminClient()
 
-  const [{ data: submissions, count }, { data: configs }] = await Promise.all([
+  const [{ data: submissions, count }, { data: configs }, { data: cohorts }, { data: cohortMembers }] = await Promise.all([
     supabase
       .from('submissions')
       .select(`
@@ -23,7 +23,23 @@ export default async function CandidatesPage() {
       .from('assessment_configs')
       .select('id, label, is_active')
       .order('is_active', { ascending: false }),
+
+    supabase
+      .from('cohorts')
+      .select('id, name, is_active')
+      .order('created_at', { ascending: false }),
+
+    supabase
+      .from('cohort_members')
+      .select('cohort_id, email'),
   ])
+
+  // Build email → cohort_id[] map for client-side filtering
+  const cohortMemberMap: Record<string, string[]> = {}
+  for (const m of cohortMembers ?? []) {
+    if (!cohortMemberMap[m.email]) cohortMemberMap[m.email] = []
+    cohortMemberMap[m.email].push(m.cohort_id)
+  }
 
   return (
     <div>
@@ -37,6 +53,8 @@ export default async function CandidatesPage() {
         submissions={(submissions || []) as any}
         totalCount={count ?? (submissions?.length || 0)}
         configs={(configs || []) as { id: string; label: string; is_active: boolean }[]}
+        cohorts={(cohorts || []) as { id: string; name: string; is_active: boolean }[]}
+        cohortMemberMap={cohortMemberMap}
       />
     </div>
   )
