@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { normalizedWeights } from '@/lib/challenges'
 import type { SectionId } from '@/lib/challenges'
+import { createClient } from '@/lib/supabase/client'
 
 interface Submission {
   id: string
@@ -128,22 +130,33 @@ function exportCSV(submissions: Submission[]) {
 
 type SortKey = 'date' | 'overall' | 'math' | 'roleplay'
 type SortDir = 'asc' | 'desc'
-type FraudFilter = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
+type FraudFilter   = 'all' | 'Confiable' | 'Riesgo Medio' | 'Riesgo Alto'
+type CfBandFilter  = 'all' | 'TOP TALENT' | 'STRONG FIT' | 'POTENTIAL RISK' | 'NOT A FIT'
+type PendingFilter = 'all' | 'pending' | 'evaluated'
 
 const PAGE_SIZE = 50
 
 export function CandidatesTable({ submissions, totalCount, configs = [] }: { submissions: Submission[]; totalCount?: number; configs?: AssessmentConfig[] }) {
+  const router = useRouter()
+
   // Default to the first active config, so the list is pre-filtered by test
   const defaultConfig = configs.find(c => c.is_active)?.id ?? 'all'
-  const [configFilter, setConfigFilter] = useState<string>(defaultConfig)
-  const [query,       setQuery]       = useState('')
-  const [sortKey,     setSortKey]     = useState<SortKey>('date')
-  const [sortDir,     setSortDir]     = useState<SortDir>('desc')
-  const [fraudFilter, setFraudFilter] = useState<FraudFilter>('all')
-  const [minScore,    setMinScore]    = useState('')
-  const [page,        setPage]        = useState(0)
+  const [configFilter,  setConfigFilter]  = useState<string>(defaultConfig)
+  const [query,         setQuery]         = useState('')
+  const [sortKey,       setSortKey]       = useState<SortKey>('date')
+  const [sortDir,       setSortDir]       = useState<SortDir>('desc')
+  const [fraudFilter,   setFraudFilter]   = useState<FraudFilter>('all')
+  const [minScore,      setMinScore]      = useState('')
+  const [page,          setPage]          = useState(0)
   const [reEvalLoading, setReEvalLoading] = useState<Record<string, boolean>>({})
   const [reEvalDone,    setReEvalDone]    = useState<Record<string, boolean>>({})
+  // ── New filters ──────────────────────────────────────────────────────────
+  const [cfBandFilter,  setCfBandFilter]  = useState<CfBandFilter>('all')
+  const [dateFrom,      setDateFrom]      = useState('')
+  const [dateTo,        setDateTo]        = useState('')
+  const [pendingFilter, setPendingFilter] = useState<PendingFilter>('all')
+  const [showAnalytics, setShowAnalytics] = useState(false)
+  const [newEvals,      setNewEvals]      = useState(0)
 
   const triggerReEval = useCallback(async (s: Submission) => {
     const sid = s.id
@@ -166,6 +179,17 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
     return false
   }
 
+  // ── Realtime: notify admin when new evaluations land without forcing a full refresh ──
+  useEffect(() => {
+    const supabase = createClient()
+    const ch = supabase
+      .channel('admin-eval-notifications')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'submissions' }, () => setNewEvals(n => n + 1))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'submissions' }, () => setNewEvals(n => n + 1))
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('desc') }
@@ -187,6 +211,11 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
       }
       if (fraudFilter !== 'all' && pr?.fraud_level !== fraudFilter) return false
       if (minScore && (computeOverall(s) ?? 0) < Number(minScore)) return false
+      if (cfBandFilter !== 'all' && s.cultural_fit_band !== cfBandFilter) return false
+      if (dateFrom && s.completed_at && s.completed_at < dateFrom) return false
+      if (dateTo  && s.completed_at && s.completed_at > dateTo + 'T23:59:59') return false
+      if (pendingFilter === 'pending'   && !hasPendingEval(s)) return false
+      if (pendingFilter === 'evaluated' &&  hasPendingEval(s)) return false
       return true
     })
     .sort((a, b) => {
@@ -217,6 +246,26 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
     { label: 'Pendientes eval IA',  value: pendienteIA,  color: pendienteIA > 0 ? 'var(--gold)' : 'var(--muted)', icon: '🤖' },
   ]
 
+  // ── Analytics (computed from filtered set) ───────────────────────────────
+  const fTotal = filtered.length
+  const rpScored  = filtered.filter(s => s.roleplay_score      != null).length
+  const cfScored  = filtered.filter(s => s.cultural_fit_score  != null).length
+  const rpDone    = filtered.filter(s => s.roleplay_completed).length
+  const cfDone    = filtered.filter(s => s.cultural_fit_completed).length
+  const avgRp     = rpScored > 0 ? Math.round(filtered.filter(s => s.roleplay_score != null).reduce((a, s) => a + Math.round((s.roleplay_score! / 87) * 100), 0) / rpScored) : null
+  const avgCf     = cfScored > 0 ? Math.round(filtered.filter(s => s.cultural_fit_score != null).reduce((a, s) => a + s.cultural_fit_score!, 0) / cfScored) : null
+  const avgMath   = filtered.filter(s => s.math_score_pct != null || s.math_score_raw != null).length > 0
+    ? Math.round(filtered.filter(s => s.math_score_pct != null || s.math_score_raw != null).reduce((a, s) => a + mathScorePct(s), 0) / filtered.filter(s => s.math_score_pct != null || s.math_score_raw != null).length) : null
+  const bandCounts: Record<string, number> = { 'TOP TALENT': 0, 'STRONG FIT': 0, 'POTENTIAL RISK': 0, 'NOT A FIT': 0 }
+  filtered.forEach(s => { if (s.cultural_fit_band && s.cultural_fit_band in bandCounts) bandCounts[s.cultural_fit_band]++ })
+  const scoreBuckets = [
+    { label: '80–100',  count: filtered.filter(s => { const o = computeOverall(s); return o != null && o >= 80 }).length, color: 'var(--teal)' },
+    { label: '60–79',   count: filtered.filter(s => { const o = computeOverall(s); return o != null && o >= 60 && o < 80 }).length, color: 'var(--blue)' },
+    { label: '40–59',   count: filtered.filter(s => { const o = computeOverall(s); return o != null && o >= 40 && o < 60 }).length, color: 'var(--gold)' },
+    { label: '0–39',    count: filtered.filter(s => { const o = computeOverall(s); return o != null && o < 40 }).length,  color: '#ff6b6b' },
+  ]
+  const bandColors: Record<string, string> = { 'TOP TALENT': '#06d68a', 'STRONG FIT': '#4361ee', 'POTENTIAL RISK': '#f59e0b', 'NOT A FIT': '#e03554' }
+
   const th: React.CSSProperties = {
     padding: '11px 16px',
     textAlign: 'left',
@@ -239,6 +288,29 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
 
   return (
     <div>
+
+      {/* ── REALTIME NOTIFICATION BANNER ────────────────────────────────── */}
+      {newEvals > 0 && (
+        <div style={{
+          marginBottom: 16, padding: '10px 16px', borderRadius: 9,
+          background: 'rgba(67,97,238,.08)', border: '1px solid rgba(67,97,238,.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 12.5, fontFamily: 'DM Sans', color: '#93c5fd' }}>
+            🔔 Hay actualizaciones disponibles ({newEvals} cambio{newEvals !== 1 ? 's' : ''} detectado{newEvals !== 1 ? 's' : ''})
+          </span>
+          <button
+            onClick={() => { router.refresh(); setNewEvals(0) }}
+            style={{
+              padding: '5px 14px', borderRadius: 7, fontSize: 12,
+              background: 'rgba(67,97,238,.2)', border: '1px solid rgba(67,97,238,.4)',
+              color: '#93c5fd', fontFamily: 'DM Sans', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Actualizar lista →
+          </button>
+        </div>
+      )}
 
       {/* ── PRUEBAS ACTIVAS PICKER ───────────────────────────────────────── */}
       {configs.length > 0 && (
@@ -318,6 +390,110 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
         ))}
       </div>
 
+      {/* ── ANALYTICS TOGGLE ────────────────────────────────────────────── */}
+      <div style={{ marginBottom: showAnalytics ? 0 : 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => setShowAnalytics(v => !v)}
+          style={{
+            padding: '6px 14px', borderRadius: 8, fontSize: 11.5,
+            background: showAnalytics ? 'rgba(67,97,238,.12)' : 'var(--card)',
+            border: `1px solid ${showAnalytics ? 'rgba(67,97,238,.35)' : 'var(--border)'}`,
+            color: showAnalytics ? '#93c5fd' : 'var(--muted)',
+            fontFamily: 'Space Mono, monospace', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6, transition: 'all .15s',
+          }}
+        >
+          📊 {showAnalytics ? 'Ocultar' : 'Ver'} analytics
+        </button>
+      </div>
+
+      {/* ── ANALYTICS PANEL ─────────────────────────────────────────────── */}
+      {showAnalytics && (
+        <div style={{
+          marginBottom: 20, padding: '20px 24px',
+          background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+        }}>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 16 }}>
+            Analytics — {fTotal} candidato{fTotal !== 1 ? 's' : ''} en vista
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+
+            {/* Completitud por sección */}
+            <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', marginBottom: 12 }}>Completitud</div>
+              {[
+                { label: 'Roleplay', done: rpDone, scored: rpScored, color: '#f59e0b' },
+                { label: 'Cultural Fit', done: cfDone, scored: cfScored, color: '#a855f7' },
+              ].map(row => (
+                <div key={row.label} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, fontFamily: 'DM Sans', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--dim)' }}>{row.label}</span>
+                    <span style={{ color: row.color, fontFamily: 'Space Mono, monospace', fontSize: 11 }}>
+                      {row.done}/{fTotal} completados · {row.scored} evaluados
+                    </span>
+                  </div>
+                  <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${fTotal > 0 ? Math.round((row.scored / fTotal) * 100) : 0}%`, background: row.color, borderRadius: 2, transition: 'width .4s ease' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Scores promedio */}
+            <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', marginBottom: 12 }}>Score promedio</div>
+              {[
+                { label: 'Roleplay',     avg: avgRp,   color: '#f59e0b' },
+                { label: 'Cultural Fit', avg: avgCf,   color: '#a855f7' },
+                { label: 'Math / Excel', avg: avgMath, color: 'var(--teal)' },
+              ].map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
+                  <span style={{ fontSize: 12, fontFamily: 'DM Sans', color: 'var(--dim)' }}>{row.label}</span>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, fontWeight: 700, color: row.avg != null ? scoreColor(row.avg) : 'var(--muted)' }}>
+                    {row.avg != null ? `${row.avg}%` : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Distribución de scores */}
+            <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)', marginBottom: 12 }}>Distribución score general</div>
+              {scoreBuckets.map(b => (
+                <div key={b.label} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                    <span style={{ fontFamily: 'Space Mono, monospace', color: b.color }}>{b.label}</span>
+                    <span style={{ fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>{b.count}</span>
+                  </div>
+                  <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${fTotal > 0 ? Math.round((b.count / fTotal) * 100) : 0}%`, background: b.color, borderRadius: 2 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </div>
+
+          {/* CF Band breakdown */}
+          {cfScored > 0 && (
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.entries(bandCounts).filter(([, c]) => c > 0).map(([band, count]) => (
+                <div key={band} style={{
+                  padding: '5px 12px', borderRadius: 20,
+                  background: `${bandColors[band]}14`,
+                  border: `1px solid ${bandColors[band]}30`,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: bandColors[band], fontWeight: 700 }}>{count}</span>
+                  <span style={{ fontFamily: 'DM Sans', fontSize: 11, color: bandColors[band] }}>{band}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── SEARCH BAR ──────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 16, position: 'relative' }}>
         <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', display: 'flex' }}>
@@ -394,10 +570,72 @@ export function CandidatesTable({ submissions, totalCount, configs = [] }: { sub
           <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans' }}>%</span>
         </div>
 
+        {/* CF Band filter */}
+        <select
+          value={cfBandFilter}
+          onChange={e => handleFilterChange(() => setCfBandFilter(e.target.value as CfBandFilter))}
+          style={{
+            padding: '8px 12px', borderRadius: 8, fontSize: 12,
+            background: 'var(--card)', border: `1px solid ${cfBandFilter !== 'all' ? 'rgba(168,85,247,.4)' : 'var(--border)'}`,
+            color: cfBandFilter !== 'all' ? '#a855f7' : 'var(--muted)',
+            fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="all">Banda CF: Todas</option>
+          <option value="TOP TALENT">⭐ Top Talent</option>
+          <option value="STRONG FIT">💪 Strong Fit</option>
+          <option value="POTENTIAL RISK">⚠️ Potential Risk</option>
+          <option value="NOT A FIT">❌ Not a Fit</option>
+        </select>
+
+        {/* Pending eval filter */}
+        <select
+          value={pendingFilter}
+          onChange={e => handleFilterChange(() => setPendingFilter(e.target.value as PendingFilter))}
+          style={{
+            padding: '8px 12px', borderRadius: 8, fontSize: 12,
+            background: 'var(--card)', border: `1px solid ${pendingFilter !== 'all' ? 'rgba(245,158,11,.4)' : 'var(--border)'}`,
+            color: pendingFilter !== 'all' ? 'var(--gold)' : 'var(--muted)',
+            fontFamily: 'DM Sans, sans-serif', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="all">Estado eval: Todos</option>
+          <option value="pending">⏳ Pendiente IA</option>
+          <option value="evaluated">✅ Evaluados</option>
+        </select>
+
+        {/* Date range */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans' }}>Desde</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={e => handleFilterChange(() => setDateFrom(e.target.value))}
+            style={{
+              padding: '6px 8px', borderRadius: 7, fontSize: 11,
+              background: 'var(--card)', border: `1px solid ${dateFrom ? 'rgba(67,97,238,.4)' : 'var(--border)'}`,
+              color: dateFrom ? 'var(--text)' : 'var(--muted)',
+              fontFamily: 'DM Sans', outline: 'none', cursor: 'pointer',
+            }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans' }}>—</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={e => handleFilterChange(() => setDateTo(e.target.value))}
+            style={{
+              padding: '6px 8px', borderRadius: 7, fontSize: 11,
+              background: 'var(--card)', border: `1px solid ${dateTo ? 'rgba(67,97,238,.4)' : 'var(--border)'}`,
+              color: dateTo ? 'var(--text)' : 'var(--muted)',
+              fontFamily: 'DM Sans', outline: 'none', cursor: 'pointer',
+            }}
+          />
+        </div>
+
         {/* Clear filters */}
-        {(fraudFilter !== 'all' || minScore || configFilter !== 'all') && (
+        {(fraudFilter !== 'all' || minScore || configFilter !== 'all' || cfBandFilter !== 'all' || dateFrom || dateTo || pendingFilter !== 'all') && (
           <button
-            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setPage(0) }}
+            onClick={() => { setFraudFilter('all'); setMinScore(''); setConfigFilter('all'); setCfBandFilter('all'); setDateFrom(''); setDateTo(''); setPendingFilter('all'); setPage(0) }}
             style={{
               padding: '7px 12px', borderRadius: 7, fontSize: 11.5,
               background: 'transparent', border: '1px solid var(--border)',
