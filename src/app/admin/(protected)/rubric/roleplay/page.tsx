@@ -1,7 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/admin-auth'
 import { RolePlayRubricEditor } from '../RolePlayRubricEditor'
 
 export default async function RubricRolePlayPage() {
+  await requireSuperAdmin()
   const supabase = createAdminClient()
   const { data: rows } = await supabase
     .from('evaluation_rubric')

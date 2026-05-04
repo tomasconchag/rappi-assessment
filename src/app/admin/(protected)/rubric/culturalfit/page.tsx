@@ -1,7 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/admin-auth'
 import { CulturalFitRubricEditor } from '../CulturalFitRubricEditor'
 
 export default async function RubricCulturalFitPage() {
+  await requireSuperAdmin()
   const supabase = createAdminClient()
   const { data: rows } = await supabase
     .from('evaluation_rubric')

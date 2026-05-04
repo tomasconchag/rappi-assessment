@@ -3,7 +3,9 @@
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import type { AdminRole } from '@/lib/admin-auth'
 
+// superAdminOnly: true  →  hidden from regular admins
 const navItems = [
   {
     href: '/admin',
@@ -65,6 +67,7 @@ const navItems = [
     href: '/admin/rubric',
     label: 'Rúbrica IA',
     exact: false,
+    superAdminOnly: true,
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         <path d="M3 4h10M3 8h7M3 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".8"/>
@@ -108,7 +111,7 @@ const navItems = [
     children: [
       { href: '/admin/training/documents', label: 'Documentos', icon: '📄', color: '#f59e0b', colorBg: 'rgba(245,158,11,.1)', colorBorder: 'rgba(245,158,11,.25)' },
       { href: '/admin/training/cohorts',   label: 'Cohortes Training', icon: '👥', color: '#06d6a0', colorBg: 'rgba(6,214,160,.1)', colorBorder: 'rgba(6,214,160,.25)' },
-      { href: '/admin/training/rubric',    label: 'Rúbrica',    icon: '📋', color: '#a855f7', colorBg: 'rgba(168,85,247,.1)', colorBorder: 'rgba(168,85,247,.25)' },
+      { href: '/admin/training/rubric',    label: 'Rúbrica',    icon: '📋', color: '#a855f7', colorBg: 'rgba(168,85,247,.1)', colorBorder: 'rgba(168,85,247,.25)', superAdminOnly: true },
       { href: '/admin/training/results',   label: 'Resultados Farmers', icon: '📊', color: '#4361ee', colorBg: 'rgba(67,97,238,.1)', colorBorder: 'rgba(67,97,238,.25)' },
     ],
   },
@@ -116,6 +119,7 @@ const navItems = [
     href: '/admin/settings',
     label: 'Taller de Math',
     exact: true,
+    superAdminOnly: true,
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         <path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".5"/>
@@ -126,7 +130,7 @@ const navItems = [
   },
 ]
 
-export function AdminSidebar({ email }: { email: string }) {
+export function AdminSidebar({ email, role }: { email: string; role: AdminRole }) {
   const router = useRouter()
   const pathname = usePathname()
 
@@ -136,8 +140,19 @@ export function AdminSidebar({ email }: { email: string }) {
     router.push('/admin/login')
   }
 
+  const isSuperAdmin = role === 'super_admin'
   const initial = email ? email.charAt(0).toUpperCase() : 'A'
   const displayEmail = email.length > 24 ? email.slice(0, 22) + '…' : email
+
+  // Filter top-level items by role, and filter children within each item
+  const visibleNav = navItems
+    .filter(item => isSuperAdmin || !item.superAdminOnly)
+    .map(item => ({
+      ...item,
+      children: item.children
+        ? item.children.filter(c => isSuperAdmin || !(c as { superAdminOnly?: boolean }).superAdminOnly)
+        : null,
+    }))
 
   return (
     <aside style={{
@@ -173,7 +188,7 @@ export function AdminSidebar({ email }: { email: string }) {
         }}>
           General
         </div>
-        {navItems.map(item => {
+        {visibleNav.map(item => {
           const isParentActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
           const showChildren = item.children && isParentActive
 
@@ -290,8 +305,11 @@ export function AdminSidebar({ email }: { email: string }) {
             <div style={{ fontSize: 11.5, color: 'var(--dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'DM Sans, sans-serif' }}>
               {displayEmail}
             </div>
-            <div style={{ fontSize: 9, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginTop: 2 }}>
-              Admin
+            <div style={{
+              fontSize: 9, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase',
+              letterSpacing: '1.5px', color: isSuperAdmin ? '#f59e0b' : 'var(--muted)', marginTop: 2,
+            }}>
+              {isSuperAdmin ? 'Super Admin' : 'Admin'}
             </div>
           </div>
         </div>

@@ -1,9 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/admin-auth'
 import { MathVersionToggle } from './MathVersionToggle'
 import { MathModeToggle } from './MathModeToggle'
 import { getQuestionList } from '@/lib/mathSpreadsheetTemplates'
 
 export default async function SettingsPage() {
+  await requireSuperAdmin()
   const supabase = createAdminClient()
 
   const [{ data: configData }, { data: allMathQs }] = await Promise.all([

@@ -1,7 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSuperAdmin } from '@/lib/admin-auth'
 import { RubricEditor } from '../RubricEditor'
 
 export default async function RubricSharkTankPage() {
+  await requireSuperAdmin()
   const supabase = createAdminClient()
   const { data: dims } = await supabase
     .from('evaluation_rubric')
