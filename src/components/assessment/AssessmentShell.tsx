@@ -172,6 +172,9 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
   const cfMimeRef          = useRef('video/webm')
   const cfCameraStreamRef  = useRef<MediaStream | null>(null)
   const cfScreenStreamRef  = useRef<MediaStream | null>(null)
+  // Scheduling gate
+  const [scheduleStatus, setScheduleStatus] = useState<'idle' | 'blocked_no_booking' | 'blocked_wrong_time' | 'ok'>('idle')
+  const [scheduleSlotLabel, setScheduleSlotLabel] = useState<string>('')
   // Voice provider state
   const [candidatePhone, setCandidatePhone] = useState<string>('')
   // Roleplay case (injected from cohort)
@@ -365,15 +368,47 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
         })
         if (res.ok) {
           const data = await res.json() as {
+            cohortId: string | null
             casoBankEntry: import('@/types/assessment').CasoBankEntry | null
             enabledSections: string[] | null
             mathModeOverride: 'questions' | 'spreadsheet' | null
             voiceProviderOverride: 'vapi' | 'arbol' | null
             roleplayCase: RoleplayCase | null
             roleplayBankCase: import('@/types/assessment').RoleplayBankEntry | null
+            requiresScheduling: boolean
           }
           if (data.roleplayCase) setRoleplayCase(data.roleplayCase)
           if (data.roleplayBankCase) setRoleplayBankCase(data.roleplayBankCase)
+
+          // ── Schedule gate ──────────────────────────────────────────────────
+          if (data.requiresScheduling && data.cohortId) {
+            try {
+              const schedRes = await fetch(
+                `/api/schedule/check?cohortId=${encodeURIComponent(data.cohortId)}&email=${encodeURIComponent(candidate.email)}`
+              )
+              if (schedRes.ok) {
+                const sched = await schedRes.json() as {
+                  hasBooking: boolean
+                  isActiveNow?: boolean
+                  slotLabel?: string
+                }
+                if (!sched.hasBooking) {
+                  setScheduleStatus('blocked_no_booking')
+                  return          // stop — do NOT proceed to context screen
+                }
+                if (!sched.isActiveNow) {
+                  setScheduleSlotLabel(sched.slotLabel ?? '')
+                  setScheduleStatus('blocked_wrong_time')
+                  return          // stop
+                }
+                setScheduleStatus('ok')
+              }
+            } catch {
+              // Network error on schedule check → fail open (don't block the candidate)
+            }
+          }
+          // ──────────────────────────────────────────────────────────────────
+
           if (data.casoBankEntry || data.enabledSections || data.mathModeOverride || data.voiceProviderOverride) {
             const bankEntry = data.casoBankEntry
             const newSections = (data.enabledSections as import('@/lib/challenges').SectionId[] | null)
@@ -851,6 +886,67 @@ export function AssessmentShell({ config, clerkUser, cohortToken, cohortDeadline
 
   const isAssessmentActive = !['welcome', 'context', 'completion'].includes(state.screen)
   const currentStep = screenToStep[state.screen] ?? -1
+
+  /* ── Schedule blocking screens ── */
+  if (scheduleStatus === 'blocked_no_booking') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center' }}>
+        <div style={{ maxWidth: 440 }}>
+          <div style={{ fontSize: 52, marginBottom: 20 }}>🗓</div>
+          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: 'var(--text)', marginBottom: 14, lineHeight: 1.2 }}>
+            Reserva tu horario primero
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--dim)', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', marginBottom: 28 }}>
+            Este assessment requiere que reserves una franja horaria antes de iniciarlo.
+            Disponibles: <strong style={{ color: 'var(--text)' }}>4:00 AM – 6:00 AM</strong> y <strong style={{ color: 'var(--text)' }}>6:00 PM – 11:00 PM</strong> (hora Colombia).
+          </p>
+          {cohortToken && (
+            <a
+              href={`/schedule/${cohortToken}`}
+              style={{
+                display: 'inline-block', padding: '13px 32px',
+                background: 'linear-gradient(140deg,#3d55e8,#2841c8)', color: '#fff',
+                textDecoration: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+                fontFamily: 'DM Sans, sans-serif',
+                boxShadow: '0 4px 16px rgba(61,85,232,.4)',
+              }}
+            >
+              Reservar mi horario →
+            </a>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (scheduleStatus === 'blocked_wrong_time') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center' }}>
+        <div style={{ maxWidth: 460 }}>
+          <div style={{ fontSize: 52, marginBottom: 20 }}>⏰</div>
+          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: 'var(--text)', marginBottom: 14, lineHeight: 1.2 }}>
+            Este no es tu horario registrado
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--dim)', lineHeight: 1.7, fontFamily: 'DM Sans, sans-serif', marginBottom: 20 }}>
+            Solo puedes acceder al assessment durante el horario que reservaste.
+          </p>
+          {scheduleSlotLabel && (
+            <div style={{ padding: '16px 24px', background: 'rgba(67,97,238,.08)', border: '1px solid rgba(67,97,238,.25)', borderRadius: 12, marginBottom: 24 }}>
+              <div style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '2px', color: 'rgba(67,97,238,.8)', marginBottom: 8 }}>
+                Tu horario registrado
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', fontFamily: 'DM Sans, sans-serif' }}>
+                {scheduleSlotLabel}
+              </div>
+            </div>
+          )}
+          <p style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'Space Mono, monospace' }}>
+            Regresa en tu horario para completar el assessment.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>

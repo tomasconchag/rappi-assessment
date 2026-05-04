@@ -188,5 +188,6 @@ export async function POST(req: NextRequest) {
     mathModeOverride: cohort.math_mode_override ?? null,
     voiceProviderOverride: cohort.voice_provider_override ?? null,
     roleplayBankCase,
+    requiresScheduling: (cohort as Record<string, unknown>).requires_scheduling ?? false,
   })
 }

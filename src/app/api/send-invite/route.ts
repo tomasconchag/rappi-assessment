@@ -12,7 +12,7 @@ function formatDeadline(endsAt: string | null): string | null {
   }) + ' (hora Colombia)'
 }
 
-function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: string, deadline: string | null): string {
+function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: string, deadline: string | null, requiresScheduling = false): string {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -80,6 +80,20 @@ function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: s
                 </tr>
               </table>
 
+              ${requiresScheduling ? `<!-- Scheduling notice -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.18);border-left:3px solid #f59e0b;border-radius:10px;padding:14px 18px;">
+                    <p style="color:#f59e0b;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;margin:0 0 6px;">⏰ Agendamiento requerido</p>
+                    <p style="color:rgba(255,255,255,.8);font-size:13px;line-height:1.6;margin:0;">
+                      Debes reservar tu franja horaria <strong style="color:#fff;">antes</strong> de realizar el assessment.
+                      Los horarios disponibles son <strong style="color:#fff;">4:00 AM – 6:00 AM</strong> y <strong style="color:#fff;">6:00 PM – 11:00 PM</strong> (hora Colombia).
+                      Cada franja tiene máximo 10 personas para garantizar la experiencia.
+                    </p>
+                  </td>
+                </tr>
+              </table>` : ''}
+
               ${deadline ? `<!-- Deadline box -->
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
                 <tr>
@@ -100,7 +114,7 @@ function buildEmailHtml(cohortName: string, inviteUrl: string, recipientEmail: s
                 <tr>
                   <td style="background:linear-gradient(140deg,#3d55e8,#2841c8);border-radius:10px;box-shadow:0 4px 20px rgba(61,85,232,.4);">
                     <a href="${inviteUrl}" style="display:inline-block;padding:15px 36px;color:#fff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:.3px;">
-                      Iniciar Assessment →
+                      ${requiresScheduling ? 'Reservar mi horario →' : 'Iniciar Assessment →'}
                     </a>
                   </td>
                 </tr>
@@ -153,7 +167,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient()
   const { data: cohort } = await supabase
     .from('cohorts')
-    .select('name, invite_token, ends_at')
+    .select('name, invite_token, ends_at, requires_scheduling')
     .eq('id', cohortId)
     .single()
 
@@ -162,7 +176,11 @@ export async function POST(req: NextRequest) {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rappi-assessment.vercel.app'
-  const inviteUrl = `${baseUrl}/assessment?c=${cohort.invite_token}`
+  const requiresScheduling = (cohort as any).requires_scheduling ?? false
+  // Scheduling cohorts → send to schedule page first; others → direct assessment
+  const inviteUrl = requiresScheduling
+    ? `${baseUrl}/schedule/${cohort.invite_token}`
+    : `${baseUrl}/assessment?c=${cohort.invite_token}`
   const deadline = formatDeadline((cohort as any).ends_at ?? null)
 
   const results: { email: string; ok: boolean; error?: string }[] = []
@@ -172,7 +190,7 @@ export async function POST(req: NextRequest) {
       await sendMailAs(adminEmail, {
         to: email,
         subject: `Invitación al Assessment Rappi — ${cohort.name}`,
-        html: buildEmailHtml(cohort.name, inviteUrl, email, deadline),
+        html: buildEmailHtml(cohort.name, inviteUrl, email, deadline, requiresScheduling),
       })
       results.push({ email, ok: true })
     } catch (e) {

@@ -54,6 +54,7 @@ export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases
   const [rpBankMode, setRpBankMode]         = useState<RoleplayBankMode>(cohort.roleplay_bank_mode ?? 'global')
   const [rpBankCaseId, setRpBankCaseId]     = useState<string>(cohort.fixed_roleplay_bank_id ?? '')
   const [rpBankDiff, setRpBankDiff]         = useState<string>(cohort.roleplay_bank_difficulty_filter ?? '')
+  const [requiresScheduling, setRequiresScheduling] = useState<boolean>((cohort as Record<string, unknown>).requires_scheduling as boolean ?? false)
   const [saving, setSaving]                 = useState(false)
   const [flash, setFlash]                   = useState<string | null>(null)
 
@@ -84,6 +85,7 @@ export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases
           roleplay_bank_mode:              rpBankMode,
           fixed_roleplay_bank_id:          rpBankMode === 'fixed'  ? (rpBankCaseId || null) : null,
           roleplay_bank_difficulty_filter: rpBankMode === 'random' ? (rpBankDiff || null)    : null,
+          requires_scheduling:             requiresScheduling,
         })
         .eq('id', cohort.id)
       if (error) throw error
@@ -151,6 +153,32 @@ export function CohortEditor({ cohort, cases, rpCases }: { cohort: Cohort; cases
             <div style={{
               position: 'absolute', top: 3,
               left: isActive ? 23 : 3,
+              width: 18, height: 18, borderRadius: '50%',
+              background: '#fff', transition: 'left .2s',
+            }} />
+          </button>
+        </div>
+
+        {/* Scheduling toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>⏰ Agendamiento requerido</label>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans, sans-serif', marginTop: 2 }}>
+              Los testers deben reservar un horario (máx. 10/franja)
+            </div>
+          </div>
+          <button
+            onClick={() => setRequiresScheduling(v => !v)}
+            style={{
+              width: 44, height: 24, borderRadius: 12,
+              background: requiresScheduling ? '#f59e0b' : 'var(--border)',
+              border: 'none', cursor: 'pointer', position: 'relative',
+              transition: 'background .2s', flexShrink: 0, marginLeft: 12,
+            }}
+          >
+            <div style={{
+              position: 'absolute', top: 3,
+              left: requiresScheduling ? 23 : 3,
               width: 18, height: 18, borderRadius: '50%',
               background: '#fff', transition: 'left .2s',
             }} />
