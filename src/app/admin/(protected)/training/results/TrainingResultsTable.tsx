@@ -16,6 +16,9 @@ interface TrainingSubmission {
   vapi_call_id: string | null
   transcript: string | null
   evaluation: Record<string, unknown> | null
+  fraud_score: number | null
+  fraud_level: string | null
+  snapshot_paths: string[] | null
 }
 
 interface Cohort {
@@ -201,6 +204,20 @@ export function TrainingResultsTable({
                       {s.band}
                     </span>
                   )}
+
+                  {/* Fraud badge */}
+                  {s.fraud_level && (() => {
+                    const fs = s.fraud_score ?? 0
+                    const fl = s.fraud_level
+                    const fc = fl === 'Confiable' ? { color: '#40d8a0', bg: 'rgba(0,214,138,.07)', border: 'rgba(0,214,138,.16)' }
+                      : fl === 'Riesgo Medio'     ? { color: '#f0ac60', bg: 'rgba(232,146,48,.07)', border: 'rgba(232,146,48,.16)' }
+                      : { color: '#f07090', bg: 'rgba(224,53,84,.08)', border: 'rgba(224,53,84,.18)' }
+                    return (
+                      <span style={{ fontSize: 10, fontFamily: 'Space Mono', padding: '3px 9px', borderRadius: 100, background: fc.bg, color: fc.color, border: `1px solid ${fc.border}`, flexShrink: 0 }}>
+                        {fl === 'Confiable' ? '🔒' : '⚠'} {fs > 0 ? fs : fl === 'Confiable' ? 'OK' : fl}
+                      </span>
+                    )
+                  })()}
 
                   {/* Status */}
                   <span style={{ fontSize: 11, color: st.color, fontFamily: 'DM Sans', flexShrink: 0 }}>{st.label}</span>

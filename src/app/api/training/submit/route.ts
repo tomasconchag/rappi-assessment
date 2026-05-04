@@ -13,9 +13,13 @@ export async function POST(req: NextRequest) {
       farmerName?: string
       vapiCallId: string
       videoPath?: string
+      proctoring?: Record<string, unknown> | null
+      snapshotPaths?: string[]
+      fraudScore?: number
+      fraudLevel?: string
     }
 
-    const { cohortId, farmerEmail, farmerName, vapiCallId, videoPath } = body
+    const { cohortId, farmerEmail, farmerName, vapiCallId, videoPath, proctoring, snapshotPaths, fraudScore, fraudLevel } = body
     if (!cohortId || !farmerEmail || !vapiCallId) {
       return Response.json({ error: 'cohortId, farmerEmail, vapiCallId required' }, { status: 400 })
     }
@@ -48,6 +52,10 @@ export async function POST(req: NextRequest) {
         video_path: videoPath || null,
         status: 'pending',
         completed_at: new Date().toISOString(),
+        proctoring: proctoring ?? null,
+        snapshot_paths: snapshotPaths ?? [],
+        fraud_score: fraudScore ?? 0,
+        fraud_level: fraudLevel ?? 'Confiable',
       }, { onConflict: 'cohort_id,farmer_email', ignoreDuplicates: false })
       .select('id')
       .single()

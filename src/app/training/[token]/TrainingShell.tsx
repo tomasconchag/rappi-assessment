@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Vapi from '@vapi-ai/web'
+import { useProctor } from '@/hooks/useProctor'
+import { ProctoringBadge } from '@/components/assessment/ProctoringBadge'
 
 type Stage = 'form' | 'ready' | 'calling' | 'done' | 'error'
 
@@ -33,22 +35,104 @@ export function TrainingShell({
   const [callStatus, setCallStatus] = useState<string>('Iniciando…')
   const [isMuted, setIsMuted] = useState(false)
   const [volume, setVolume] = useState(0)
-  const [callId, setCallId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [warnModal, setWarnModal] = useState<{ title: string; msg: string } | null>(null)
+  const [proctorScore, setProctorScore] = useState(0)
 
-  const vapiRef = useRef<InstanceType<typeof Vapi> | null>(null)
-  const animRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const vapiRef        = useRef<InstanceType<typeof Vapi> | null>(null)
+  const callIdRef      = useRef<string | null>(null)
+  const stageRef       = useRef<Stage>(stage)
+  stageRef.current     = stage
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (vapiRef.current) {
-        vapiRef.current.stop()
-      }
-      if (animRef.current) clearInterval(animRef.current)
+  // Snapshot refs — same pattern as AssessmentShell
+  const snapTimersRef  = useRef<ReturnType<typeof setTimeout>[]>([])
+  const snapStreamRef  = useRef<MediaStream | null>(null)
+  const snapVideoRef   = useRef<HTMLVideoElement | null>(null)
+  const proctorApiRef  = useRef<ReturnType<typeof useProctor> | null>(null)
+
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
+  const goFullscreen = useCallback(() => {
+    const el = document.documentElement
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().catch(() => {})
     }
   }, [])
 
+  // ── Proctoring ─────────────────────────────────────────────────────────────
+  const proctor = useProctor({
+    active: stage === 'calling',
+    currentScreen: stage === 'calling' ? 'training_call' : '',
+    onWarning: (title, msg) => setWarnModal({ title, msg }),
+    goFullscreen,
+  })
+  proctorApiRef.current = proctor
+
+  // Poll fraud score every 3s while calling
+  useEffect(() => {
+    if (stage !== 'calling') return
+    const interval = setInterval(() => {
+      setProctorScore(proctorApiRef.current?.fraudScore() ?? 0)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [stage])
+
+  // ── Webcam snapshots ───────────────────────────────────────────────────────
+  const takeSnap = useCallback(() => {
+    const video = snapVideoRef.current
+    if (!video || video.readyState < 2) return
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = 320; canvas.height = 240
+      canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 240)
+      const img = canvas.toDataURL('image/jpeg', 0.5)
+      proctorApiRef.current?.addSnapshot(img)
+    } catch { /* silent */ }
+  }, [])
+
+  const initSnapshots = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      snapStreamRef.current = stream
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.muted = true
+      video.playsInline = true
+      snapVideoRef.current = video
+      await video.play()
+      // Schedule every ~30s with ±5s jitter, up to 25 min
+      const totalDuration = 25 * 60 * 1000
+      const baseInterval  = 30 * 1000
+      let elapsed = baseInterval
+      while (elapsed < totalDuration) {
+        const d = elapsed + (Math.random() * 10000 - 5000)
+        const t = setTimeout(() => takeSnap(), Math.max(d, 5000))
+        snapTimersRef.current.push(t)
+        elapsed += baseInterval
+      }
+    } catch { /* camera permission denied — silently skip */ }
+  }, [takeSnap])
+
+  const stopSnapshots = useCallback(() => {
+    snapTimersRef.current.forEach(t => clearTimeout(t))
+    snapTimersRef.current = []
+    snapStreamRef.current?.getTracks().forEach(t => t.stop())
+    snapStreamRef.current = null
+    if (snapVideoRef.current) {
+      snapVideoRef.current.pause()
+      snapVideoRef.current.srcObject = null
+      snapVideoRef.current = null
+    }
+  }, [])
+
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      vapiRef.current?.stop()
+      stopSnapshots()
+    }
+  }, [stopSnapshots])
+
+  // ── Form ───────────────────────────────────────────────────────────────────
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
@@ -57,31 +141,92 @@ export function TrainingShell({
     setStage('ready')
   }
 
+  // ── Upload snapshots + submit ─────────────────────────────────────────────
+  const handleCallEnd = useCallback(async (cid: string | null) => {
+    stopSnapshots()
+    setCallStatus('Guardando resultados…')
+
+    const proctoringData = proctorApiRef.current?.getData()
+
+    // Upload snapshots to assessment-snapshots bucket
+    let snapshotPaths: string[] = []
+    if (proctoringData?.snapshots?.length) {
+      const safeName = `training_${email.trim().replace('@', '_').replace(/\./g, '_').replace(/[^a-zA-Z0-9_-]/g, '')}`
+      const results = await Promise.all(
+        proctoringData.snapshots.map(async (snap, i) => {
+          try {
+            const snapRes = await fetch('/api/snapshot-upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ candidateEmail: safeName, index: i }),
+            })
+            if (!snapRes.ok) return null
+            const { signedUrl, path } = await snapRes.json()
+            if (!snap?.img) return null
+            const blob = await (await fetch(snap.img)).blob()
+            await fetch(signedUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } })
+            return path as string
+          } catch {
+            return null
+          }
+        })
+      )
+      snapshotPaths = results.filter((p): p is string => p !== null)
+    }
+
+    // Strip raw snapshot blobs before saving to DB — keep only stats + events
+    const { snapshots: _snaps, ...proctoringForDb } = proctoringData ?? { snapshots: [] }
+
+    try {
+      const res = await fetch('/api/training/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cohortId,
+          farmerEmail: email.trim().toLowerCase(),
+          farmerName: name.trim(),
+          vapiCallId: cid ?? 'unknown',
+          proctoring: proctoringData ? proctoringForDb : null,
+          snapshotPaths,
+          fraudScore: proctoringData?.fraud_score ?? 0,
+          fraudLevel: proctoringData?.fraud_level ?? 'Confiable',
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        setSubmitError(d.error ?? 'Error al guardar')
+      }
+    } catch {
+      setSubmitError('Error de conexión al guardar')
+    }
+
+    setStage('done')
+  }, [cohortId, email, name, stopSnapshots])
+
+  // ── Start call ─────────────────────────────────────────────────────────────
   const startCall = useCallback(async () => {
     setStage('calling')
     setCallStatus('Conectando con el agente…')
+    goFullscreen()
+    initSnapshots()
 
     try {
       const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!)
       vapiRef.current = vapi
 
-      // Wire up events
-      vapi.on('call-start', () => setCallStatus('Llamada activa'))
+      vapi.on('call-start', () => setCallStatus('Llamada activa — habla cuando estés listo'))
       vapi.on('call-end', () => {
-        setCallStatus('Llamada finalizada')
-        // Get call ID before tearing down
-        const cid = (vapi as unknown as { callId?: string }).callId ?? null
+        const cid = (vapi as unknown as { callId?: string }).callId ?? callIdRef.current
         handleCallEnd(cid)
       })
       vapi.on('speech-start', () => setCallStatus('Agente hablando…'))
-      vapi.on('speech-end', () => setCallStatus('Tu turno…'))
+      vapi.on('speech-end',   () => setCallStatus('Tu turno…'))
       vapi.on('volume-level', (v: number) => setVolume(v))
       vapi.on('error', (err: Error) => {
         console.error('[TrainingShell] vapi error:', err)
         setCallStatus('Error: ' + (err?.message ?? 'unknown'))
       })
 
-      // Build assistant overrides with document context
       const systemContent = documentContent
         ? `Eres el agente de training de Rappi para el ejercicio "${cohortName}".
 
@@ -109,9 +254,7 @@ Sé desafiante pero justo. El ejercicio debe durar entre 10 y 15 minutos.`
       }
 
       const callRes = await vapi.start(vapiAssistantId, assistantOverrides as Parameters<typeof vapi.start>[1])
-      const newCallId = (callRes as { id?: string })?.id ?? null
-      setCallId(newCallId)
-      setCallStatus('Llamada activa — habla cuando estés listo')
+      callIdRef.current = (callRes as { id?: string })?.id ?? null
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -119,39 +262,10 @@ Sé desafiante pero justo. El ejercicio debe durar entre 10 y 15 minutos.`
       setCallStatus('Error al conectar: ' + msg)
       setStage('error')
     }
-  }, [name, email, cohortId, cohortName, documentContent, vapiAssistantId])
-
-  const handleCallEnd = useCallback(async (cid: string | null) => {
-    if (animRef.current) clearInterval(animRef.current)
-    setCallStatus('Guardando resultados…')
-
-    try {
-      const res = await fetch('/api/training/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cohortId,
-          farmerEmail: email.trim().toLowerCase(),
-          farmerName: name.trim(),
-          vapiCallId: cid ?? 'unknown',
-        }),
-      })
-
-      if (!res.ok) {
-        const d = await res.json()
-        setSubmitError(d.error ?? 'Error al guardar')
-      }
-    } catch (e) {
-      setSubmitError('Error de conexión al guardar')
-    }
-
-    setStage('done')
-  }, [cohortId, email, name])
+  }, [name, email, cohortId, cohortName, documentContent, vapiAssistantId, goFullscreen, initSnapshots, handleCallEnd])
 
   const stopCall = useCallback(() => {
-    if (vapiRef.current) {
-      vapiRef.current.stop()
-    }
+    vapiRef.current?.stop()
   }, [])
 
   const toggleMute = () => {
@@ -162,8 +276,7 @@ Sé desafiante pero justo. El ejercicio debe durar entre 10 y 15 minutos.`
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
+  // ── Error: inactive cohort ─────────────────────────────────────────────────
   if (stage === 'error' && inactive) {
     return (
       <Shell>
@@ -182,191 +295,226 @@ Sé desafiante pero justo. El ejercicio debe durar entre 10 y 15 minutos.`
   }
 
   return (
-    <Shell>
-      {/* Header */}
-      <div style={{ marginBottom: 32, textAlign: 'center' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 100, background: 'rgba(6,214,160,.1)', border: '1px solid rgba(6,214,160,.2)', marginBottom: 16 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#06d6a0' }} />
-          <span style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', color: '#06d6a0', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Training Hour</span>
-        </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: 'var(--text)', margin: '0 0 8px' }}>
-          {cohortName}
-        </h1>
-        {cohortDescription && (
-          <p style={{ fontSize: 14, color: 'var(--muted)', fontFamily: 'DM Sans', margin: 0 }}>{cohortDescription}</p>
-        )}
-        {endsAt && (
-          <p style={{ fontSize: 12, color: '#e03554', fontFamily: 'DM Sans', margin: '8px 0 0' }}>
-            Disponible hasta: {new Date(endsAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </p>
-        )}
-      </div>
+    <>
+      {/* Proctoring badge — only visible during call */}
+      <ProctoringBadge fraudScore={proctorScore} visible={stage === 'calling'} />
 
-      {/* Docs used */}
-      {documentNames.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 28 }}>
-          {documentNames.map(n => (
-            <span key={n} style={{ padding: '4px 12px', borderRadius: 100, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)', fontSize: 11, fontFamily: 'Space Mono, monospace', color: '#f59e0b' }}>
-              📄 {n}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Stage: form */}
-      {stage === 'form' && (
-        <form onSubmit={handleFormSubmit} style={{ maxWidth: 400, margin: '0 auto' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '28px 28px 24px' }}>
-            <div style={{ fontSize: 9.5, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 20 }}>Tus datos</div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans', marginBottom: 5 }}>Nombre completo</label>
-              <input
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Tu nombre"
-                required
-                style={{ width: '100%', padding: '10px 13px', borderRadius: 8, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              />
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans', marginBottom: 5 }}>Email corporativo</label>
-              <input
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="tu@rappi.com"
-                type="email"
-                required
-                style={{ width: '100%', padding: '10px 13px', borderRadius: 8, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {formError && (
-              <div style={{ fontSize: 12, color: '#ff6b6b', fontFamily: 'DM Sans', marginBottom: 12 }}>⚠️ {formError}</div>
-            )}
-
-            <button type="submit" style={{ width: '100%', padding: '12px', borderRadius: 9, background: 'rgba(6,214,160,.12)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-              Continuar →
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Stage: ready */}
-      {stage === 'ready' && (
-        <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '32px 28px' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>🎙️</div>
-            <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: 'var(--text)', margin: '0 0 12px' }}>
-              ¡Todo listo, {name.split(' ')[0]}!
-            </h2>
-            <p style={{ fontSize: 13.5, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7, marginBottom: 24 }}>
-              Vas a realizar un roleplay de voz con el agente de training.
-              Asegúrate de estar en un lugar tranquilo con el micrófono habilitado.
-              El ejercicio dura aproximadamente <strong style={{ color: 'var(--text)' }}>10–15 minutos</strong>.
+      {/* Warning modal */}
+      {warnModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        }}>
+          <div style={{
+            background: '#13131e', border: '1px solid rgba(224,53,84,.3)',
+            borderRadius: 14, padding: '28px 28px 24px', maxWidth: 400, width: '100%',
+          }}>
+            <div style={{ fontSize: 20, marginBottom: 10 }}>{warnModal.title}</div>
+            <p style={{ fontSize: 13.5, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.6, marginBottom: 20 }}>
+              {warnModal.msg}
             </p>
-
-            <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 9, marginBottom: 24, fontSize: 12.5, fontFamily: 'DM Sans', color: '#f59e0b', textAlign: 'left' }}>
-              ⚠ Una vez que inicies, no podrás pausar la llamada.
-            </div>
-
             <button
-              onClick={startCall}
-              style={{ width: '100%', padding: '14px', borderRadius: 9, background: 'linear-gradient(140deg, rgba(6,214,160,.2), rgba(6,214,160,.1))', border: '1px solid rgba(6,214,160,.4)', color: '#06d6a0', fontFamily: 'DM Sans', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+              onClick={() => setWarnModal(null)}
+              style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'rgba(224,53,84,.12)', border: '1px solid rgba(224,53,84,.3)', color: '#e03554', fontFamily: 'DM Sans', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
             >
-              🎙 Iniciar llamada de training
+              Entendido
             </button>
           </div>
         </div>
       )}
 
-      {/* Stage: calling */}
-      {stage === 'calling' && (
-        <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '36px 28px' }}>
-            {/* Volume visualizer */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 4, height: 60, marginBottom: 24 }}>
-              {Array.from({ length: 9 }).map((_, i) => {
-                const center = 4
-                const dist = Math.abs(i - center)
-                const barVol = Math.max(0, volume - dist * 0.08)
-                const h = 6 + barVol * 50
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      width: 6, borderRadius: 3,
-                      height: h,
-                      background: volume > 0.1 ? '#06d6a0' : 'rgba(255,255,255,.12)',
-                      transition: 'height .1s ease',
-                    }}
-                  />
-                )
-              })}
-            </div>
-
-            <div style={{ fontSize: 13, fontFamily: 'DM Sans', color: 'var(--muted)', marginBottom: 24 }}>{callStatus}</div>
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button
-                onClick={toggleMute}
-                style={{ padding: '10px 20px', borderRadius: 8, background: isMuted ? 'rgba(233,69,96,.12)' : 'rgba(255,255,255,.06)', border: `1px solid ${isMuted ? 'rgba(233,69,96,.3)' : 'var(--border)'}`, color: isMuted ? '#ff6b6b' : 'var(--muted)', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer' }}
-              >
-                {isMuted ? '🔇 Unmute' : '🎙 Mute'}
-              </button>
-              <button
-                onClick={stopCall}
-                style={{ padding: '10px 20px', borderRadius: 8, background: 'rgba(233,69,96,.12)', border: '1px solid rgba(233,69,96,.3)', color: '#ff6b6b', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
-              >
-                ⏹ Finalizar llamada
-              </button>
-            </div>
+      <Shell>
+        {/* Header */}
+        <div style={{ marginBottom: 32, textAlign: 'center' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px', borderRadius: 100, background: 'rgba(6,214,160,.1)', border: '1px solid rgba(6,214,160,.2)', marginBottom: 16 }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#06d6a0' }} />
+            <span style={{ fontSize: 10, fontFamily: 'Space Mono, monospace', color: '#06d6a0', letterSpacing: '1.5px', textTransform: 'uppercase' }}>Training Hour</span>
           </div>
-        </div>
-      )}
-
-      {/* Stage: done */}
-      {stage === 'done' && (
-        <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '40px 28px' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-            <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 24, color: 'var(--text)', margin: '0 0 12px' }}>
-              ¡Training completado!
-            </h2>
-            <p style={{ fontSize: 14, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7 }}>
-              Tu sesión de training ha sido grabada y enviada para evaluación.
-              El equipo de Rappi revisará tus resultados pronto.
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: 'var(--text)', margin: '0 0 8px' }}>
+            {cohortName}
+          </h1>
+          {cohortDescription && (
+            <p style={{ fontSize: 14, color: 'var(--muted)', fontFamily: 'DM Sans', margin: 0 }}>{cohortDescription}</p>
+          )}
+          {endsAt && (
+            <p style={{ fontSize: 12, color: '#e03554', fontFamily: 'DM Sans', margin: '8px 0 0' }}>
+              Disponible hasta: {new Date(endsAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
-            {submitError && (
-              <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(233,69,96,.08)', border: '1px solid rgba(233,69,96,.2)', borderRadius: 8, fontSize: 12, color: '#ff6b6b', fontFamily: 'DM Sans' }}>
-                ⚠ {submitError} — Contacta a tu administrador.
+          )}
+        </div>
+
+        {/* Docs used */}
+        {documentNames.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 28 }}>
+            {documentNames.map(n => (
+              <span key={n} style={{ padding: '4px 12px', borderRadius: 100, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)', fontSize: 11, fontFamily: 'Space Mono, monospace', color: '#f59e0b' }}>
+                📄 {n}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── FORM ── */}
+        {stage === 'form' && (
+          <form onSubmit={handleFormSubmit} style={{ maxWidth: 400, margin: '0 auto' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '28px 28px 24px' }}>
+              <div style={{ fontSize: 9.5, fontFamily: 'Space Mono, monospace', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--muted)', marginBottom: 20 }}>Tus datos</div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans', marginBottom: 5 }}>Nombre completo</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Tu nombre"
+                  required
+                  style={{ width: '100%', padding: '10px 13px', borderRadius: 8, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
               </div>
-            )}
-          </div>
-        </div>
-      )}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', fontFamily: 'DM Sans', marginBottom: 5 }}>Email corporativo</label>
+                <input
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="tu@rappi.com"
+                  type="email"
+                  required
+                  style={{ width: '100%', padding: '10px 13px', borderRadius: 8, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
 
-      {/* Stage: error (generic) */}
-      {stage === 'error' && !inactive && (
-        <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '40px 28px' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-            <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: 'var(--text)', margin: '0 0 12px' }}>
-              Ocurrió un error
-            </h2>
-            <p style={{ fontSize: 13.5, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7, marginBottom: 20 }}>
-              {callStatus}
-            </p>
-            <button
-              onClick={() => { setStage('ready'); setCallStatus('') }}
-              style={{ padding: '10px 24px', borderRadius: 9, background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer' }}
-            >
-              Intentar de nuevo
-            </button>
+              {formError && (
+                <div style={{ fontSize: 12, color: '#ff6b6b', fontFamily: 'DM Sans', marginBottom: 12 }}>⚠️ {formError}</div>
+              )}
+
+              <button type="submit" style={{ width: '100%', padding: '12px', borderRadius: 9, background: 'rgba(6,214,160,.12)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', fontFamily: 'DM Sans', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                Continuar →
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── READY ── */}
+        {stage === 'ready' && (
+          <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '32px 28px' }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>🎙️</div>
+              <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: 'var(--text)', margin: '0 0 12px' }}>
+                ¡Todo listo, {name.split(' ')[0]}!
+              </h2>
+              <p style={{ fontSize: 13.5, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7, marginBottom: 16 }}>
+                Vas a realizar un roleplay de voz con el agente de training.
+                Asegúrate de estar en un lugar tranquilo con el micrófono habilitado.
+                El ejercicio dura aproximadamente <strong style={{ color: 'var(--text)' }}>10–15 minutos</strong>.
+              </p>
+
+              {/* Proctoring notice */}
+              <div style={{ padding: '11px 14px', background: 'rgba(67,97,238,.06)', border: '1px solid rgba(67,97,238,.15)', borderRadius: 9, marginBottom: 16, fontSize: 12.5, fontFamily: 'DM Sans', color: '#8098f8', textAlign: 'left' }}>
+                🔒 Esta sesión es <strong>monitoreada</strong>: se registran cambios de pestaña, capturas de pantalla y actividad del micrófono.
+              </div>
+
+              <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 9, marginBottom: 24, fontSize: 12.5, fontFamily: 'DM Sans', color: '#f59e0b', textAlign: 'left' }}>
+                ⚠ Una vez que inicies, no podrás pausar la llamada.
+              </div>
+
+              <button
+                onClick={startCall}
+                style={{ width: '100%', padding: '14px', borderRadius: 9, background: 'linear-gradient(140deg, rgba(6,214,160,.2), rgba(6,214,160,.1))', border: '1px solid rgba(6,214,160,.4)', color: '#06d6a0', fontFamily: 'DM Sans', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+              >
+                🎙 Iniciar llamada de training
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-    </Shell>
+        )}
+
+        {/* ── CALLING ── */}
+        {stage === 'calling' && (
+          <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '36px 28px' }}>
+              {/* Volume visualizer */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 4, height: 60, marginBottom: 24 }}>
+                {Array.from({ length: 9 }).map((_, i) => {
+                  const center = 4
+                  const dist = Math.abs(i - center)
+                  const barVol = Math.max(0, volume - dist * 0.08)
+                  const h = 6 + barVol * 50
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        width: 6, borderRadius: 3,
+                        height: h,
+                        background: volume > 0.1 ? '#06d6a0' : 'rgba(255,255,255,.12)',
+                        transition: 'height .1s ease',
+                      }}
+                    />
+                  )
+                })}
+              </div>
+
+              <div style={{ fontSize: 13, fontFamily: 'DM Sans', color: 'var(--muted)', marginBottom: 24 }}>{callStatus}</div>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                <button
+                  onClick={toggleMute}
+                  style={{ padding: '10px 20px', borderRadius: 8, background: isMuted ? 'rgba(233,69,96,.12)' : 'rgba(255,255,255,.06)', border: `1px solid ${isMuted ? 'rgba(233,69,96,.3)' : 'var(--border)'}`, color: isMuted ? '#ff6b6b' : 'var(--muted)', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer' }}
+                >
+                  {isMuted ? '🔇 Unmute' : '🎙 Mute'}
+                </button>
+                <button
+                  onClick={stopCall}
+                  style={{ padding: '10px 20px', borderRadius: 8, background: 'rgba(233,69,96,.12)', border: '1px solid rgba(233,69,96,.3)', color: '#ff6b6b', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  ⏹ Finalizar llamada
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── DONE ── */}
+        {stage === 'done' && (
+          <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '40px 28px' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+              <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 24, color: 'var(--text)', margin: '0 0 12px' }}>
+                ¡Training completado!
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7 }}>
+                Tu sesión de training ha sido grabada y enviada para evaluación.
+                El equipo de Rappi revisará tus resultados pronto.
+              </p>
+              {submitError && (
+                <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(233,69,96,.08)', border: '1px solid rgba(233,69,96,.2)', borderRadius: 8, fontSize: 12, color: '#ff6b6b', fontFamily: 'DM Sans' }}>
+                  ⚠ {submitError} — Contacta a tu administrador.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── ERROR (generic) ── */}
+        {stage === 'error' && !inactive && (
+          <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '40px 28px' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+              <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: 'var(--text)', margin: '0 0 12px' }}>
+                Ocurrió un error
+              </h2>
+              <p style={{ fontSize: 13.5, color: 'var(--muted)', fontFamily: 'DM Sans', lineHeight: 1.7, marginBottom: 20 }}>
+                {callStatus}
+              </p>
+              <button
+                onClick={() => { setStage('ready'); setCallStatus('') }}
+                style={{ padding: '10px 24px', borderRadius: 9, background: 'rgba(255,255,255,.06)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, cursor: 'pointer' }}
+              >
+                Intentar de nuevo
+              </button>
+            </div>
+          </div>
+        )}
+      </Shell>
+    </>
   )
 }
 
