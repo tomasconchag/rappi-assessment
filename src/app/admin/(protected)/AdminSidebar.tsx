@@ -101,6 +101,18 @@ const navItems = [
     children: null,
   },
   {
+    href: '/admin/training',
+    label: 'Training Hour',
+    exact: false,
+    icon: <span style={{ fontSize: 16, lineHeight: 1 }}>🏋️</span>,
+    children: [
+      { href: '/admin/training/documents', label: 'Documentos', icon: '📄', color: '#f59e0b', colorBg: 'rgba(245,158,11,.1)', colorBorder: 'rgba(245,158,11,.25)' },
+      { href: '/admin/training/cohorts',   label: 'Cohortes Training', icon: '👥', color: '#06d6a0', colorBg: 'rgba(6,214,160,.1)', colorBorder: 'rgba(6,214,160,.25)' },
+      { href: '/admin/training/rubric',    label: 'Rúbrica',    icon: '📋', color: '#a855f7', colorBg: 'rgba(168,85,247,.1)', colorBorder: 'rgba(168,85,247,.25)' },
+      { href: '/admin/training/results',   label: 'Resultados Farmers', icon: '📊', color: '#4361ee', colorBg: 'rgba(67,97,238,.1)', colorBorder: 'rgba(67,97,238,.25)' },
+    ],
+  },
+  {
     href: '/admin/settings',
     label: 'Taller de Math',
     exact: true,
